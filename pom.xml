@@ -75,6 +75,13 @@
             <url>http://packages.confluent.io/maven/</url>
         </repository>
     </repositories>
+    
+    <distributionManagement>
+		<repository>
+			<id>ssh-repository</id>
+			<url>scpexe://andreas-kafka-test.mutech.zkm.de/opt/kafka-docker/kafka-connect/lib</url>
+		</repository>
+	</distributionManagement>
 
     <dependencies>
         <dependency>
@@ -257,6 +264,14 @@
     </dependencies>
 
     <build>
+	    <extensions>
+			<!-- Enabling the use of SSH -->
+			<extension>
+				<groupId>org.apache.maven.wagon</groupId>
+				<artifactId>wagon-ssh-external</artifactId>
+				<version>1.0-beta-6</version>
+			</extension>
+		</extensions>
         <plugins>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
