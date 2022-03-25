@@ -1,15 +1,11 @@
 package io.confluent.connect.jdbc.source.integration;
 
 import java.io.IOException;
-import java.text.Format;
 import java.util.Calendar;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 
-import org.apache.kafka.common.config.ConfigDef;
-import org.apache.kafka.common.config.ConfigValue;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.experimental.categories.Category;
@@ -20,7 +16,6 @@ import io.confluent.common.utils.IntegrationTest;
 import io.confluent.connect.jdbc.dialect.FilemakerDialect;
 import io.confluent.connect.jdbc.source.JdbcSourceConnectorConfig;
 import io.confluent.connect.jdbc.source.JdbcSourceTaskConfig;
-import scala.Predef.StringFormat;
 
 @Category(IntegrationTest.class)
 public class FilemakerDialectIT {
@@ -68,6 +63,12 @@ public class FilemakerDialectIT {
 	@Test
 	public void testConfigTableNameRecommenderWithoutSchemaOrTableTypes() throws Exception {
 		fmDialect.currentTimeOnDB(fmDialect.getConnection(), Calendar.getInstance());
+	}
+	
+	@Test
+	public void testIsConnectionValid() throws Exception {
+		// 5 seconds as in CachedConnectionProvider.VALIDITY_CHECK_TIMEOUT_S = 5
+		fmDialect.isConnectionValid(fmDialect.getConnection(), 5);
 	}
 
 }
