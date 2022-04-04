@@ -61,7 +61,7 @@ public class FilemakerDialectIT {
   }
 
 	@Test
-	public void testConfigTableNameRecommenderWithoutSchemaOrTableTypes() throws Exception {
+	public void testCurrentTimeOnDB() throws Exception {
 		fmDialect.currentTimeOnDB(fmDialect.getConnection(), Calendar.getInstance());
 	}
 	
