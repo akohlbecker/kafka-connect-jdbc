@@ -28,7 +28,7 @@ import io.confluent.connect.jdbc.util.TableId;
  */
 public class FilemakerDialect extends GenericDatabaseDialect {
 
-	private static final Logger glog = LoggerFactory.getLogger(FilemakerDialect.class);
+	private static final Logger logger = LoggerFactory.getLogger(FilemakerDialect.class);
 
 	/**
 	 * The provider for {@link Filemaker16Dialect}.
@@ -125,7 +125,7 @@ public class FilemakerDialect extends GenericDatabaseDialect {
 		properties = addConnectionProperties(properties);
 		return properties;
 	}
-
+	
 	/**
 	 * Tries to find the first table in the Filemaker database file which not empty
 	 * and not corrupt and returns the according table name as reference for all
@@ -163,7 +163,7 @@ public class FilemakerDialect extends GenericDatabaseDialect {
 						}
 					}
 				} else {
-					glog.error("No tables in database.");
+					logger.error("No tables in database.");
 					throw new ConnectException("No tables in database, determine current timestamp.");
 				}
 			}
@@ -184,7 +184,7 @@ public class FilemakerDialect extends GenericDatabaseDialect {
 	}
 
 	private String checkConnectionQuery(String referenceTableName) {
-		return "SELECT  * FROM " + referenceTableName + " FETCH FIRST 1 ROWS ONLY";
+		return "SELECT * FROM " + referenceTableName + " FETCH FIRST 1 ROWS ONLY";
 	}
 
 //	@Override
