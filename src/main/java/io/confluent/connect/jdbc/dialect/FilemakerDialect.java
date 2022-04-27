@@ -1,12 +1,17 @@
 package io.confluent.connect.jdbc.dialect;
 
 import java.sql.Connection;
+import java.sql.DatabaseMetaData;
 import java.sql.DriverManager;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.sql.Types;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Properties;
+import java.util.Set;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 
@@ -18,8 +23,12 @@ import org.slf4j.LoggerFactory;
 
 import io.confluent.connect.jdbc.dialect.DatabaseDialectProvider.SubprotocolBasedProvider;
 import io.confluent.connect.jdbc.source.JdbcSourceConnectorConfig;
+import io.confluent.connect.jdbc.util.ColumnDefinition;
+import io.confluent.connect.jdbc.util.ColumnId;
 import io.confluent.connect.jdbc.util.IdentifierRules;
 import io.confluent.connect.jdbc.util.TableId;
+import io.confluent.connect.jdbc.util.ColumnDefinition.Mutability;
+import io.confluent.connect.jdbc.util.ColumnDefinition.Nullability;
 
 /**
  * Complies to Filemaker JDBC v.16
@@ -186,6 +195,161 @@ public class FilemakerDialect extends GenericDatabaseDialect {
 	private String checkConnectionQuery(String referenceTableName) {
 		return "SELECT * FROM " + referenceTableName + " FETCH FIRST 1 ROWS ONLY";
 	}
+
+	/**
+	 * Clone of the super class method in {@link GenericDatabaseDialect#describeColumns(Connection, String, String, String, String)}
+	 * Modified code parts are commented.
+	 */
+	@Override
+	public Map<ColumnId, ColumnDefinition> describeColumns(
+	    Connection connection,
+	    String catalogPattern,
+	    String schemaPattern,
+	    String tablePattern,
+	    String columnPattern
+	) throws SQLException {
+	  logger.debug(
+	      "Querying {} dialect column metadata for catalog:{} schema:{} table:{}",
+	      this,
+	      catalogPattern,
+	      schemaPattern,
+	      tablePattern
+	  );
+
+	  // Get the primary keys of the table(s) ...
+	  final Set<ColumnId> pkColumns = primaryKeyColumns(
+	      connection,
+	      catalogPattern,
+	      schemaPattern,
+	      tablePattern
+	  );
+	  Map<ColumnId, ColumnDefinition> results = new HashMap<>();
+	  try (ResultSet rs = connection.getMetaData().getColumns(
+	      catalogPattern,
+	      schemaPattern,
+	      tablePattern,
+	      columnPattern
+	  )) {
+	    final int rsColumnCount = rs.getMetaData().getColumnCount();
+	    while (rs.next()) {
+	      final String catalogName = rs.getString(1);
+	      final String schemaName = rs.getString(2);
+	      final String tableName = rs.getString(3);
+	      final TableId tableId = new TableId(catalogName, schemaName, tableName);
+	      final String columnName = rs.getString(4);
+	      final ColumnId columnId = new ColumnId(tableId, columnName, null);
+	      // ----------- fixing jdbc type mapping --------
+	      final int jdbcType = jdbcType(rs);
+	      // ----------------------------------------------------------
+	      final String typeName = rs.getString(6);
+	      final int precision = rs.getInt(7);
+	      final int scale = rs.getInt(9);
+	      final String typeClassName = null;
+	      Nullability nullability;
+	      final int nullableValue = rs.getInt(11);
+	      switch (nullableValue) {
+	        case DatabaseMetaData.columnNoNulls:
+	          nullability = Nullability.NOT_NULL;
+	          break;
+	        case DatabaseMetaData.columnNullable:
+	          nullability = Nullability.NULL;
+	          break;
+	        case DatabaseMetaData.columnNullableUnknown:
+	        default:
+	          nullability = Nullability.UNKNOWN;
+	          break;
+	      }
+	      Boolean autoIncremented = null;
+	      if (rsColumnCount >= 23) {
+	        // Not all drivers include all columns ...
+	        String isAutoIncremented = rs.getString(23);
+	        if ("yes".equalsIgnoreCase(isAutoIncremented)) {
+	          autoIncremented = Boolean.TRUE;
+	        } else if ("no".equalsIgnoreCase(isAutoIncremented)) {
+	          autoIncremented = Boolean.FALSE;
+	        }
+	      }
+	      Boolean signed = null;
+	      Boolean caseSensitive = null;
+	      Boolean searchable = null;
+	      Boolean currency = null;
+	      Integer displaySize = null;
+	      boolean isPrimaryKey = pkColumns.contains(columnId);
+	      if (isPrimaryKey) {
+	        // Some DBMSes report pks as null
+	        nullability = Nullability.NOT_NULL;
+	      }
+	      ColumnDefinition defn = columnDefinition(
+	          rs,
+	          columnId,
+	          jdbcType,
+	          typeName,
+	          typeClassName,
+	          nullability,
+	          Mutability.UNKNOWN,
+	          precision,
+	          scale,
+	          signed,
+	          displaySize,
+	          autoIncremented,
+	          caseSensitive,
+	          searchable,
+	          currency,
+	          isPrimaryKey
+	      );
+	      results.put(columnId, defn);
+	    }
+	    return results;
+	  }
+	}
+
+	/**
+	 * Provides better mapping of filemaker types to Jdbc Types
+	 * 
+	 * see https://git.zkm.de/data-infrastructure/kafka-connect-jdbc-filemaker/-/issues/1/
+	 */
+	private int jdbcType(ResultSet rs) throws SQLException {
+		
+		// field id calcalculated as from 0-based index + 1 for 1 based column index:
+		final int FIELD_DATA_TYPE = 4 + 1;      // type	4 = INT	
+		final int FIELD_TYPE_NAME = 5 + 1;      // type	12 = VARCHAR	
+		final int FIELD_DECIMAL_DIGITS = 8 + 1; // type	4 = INT	
+		final int FIELD_NUM_PREC_RADIX = 9 + 1; // type	4 = INT	
+		final int FIELD_SQL_DATA_TYPE = 13 + 1; // type	12 = VARCHAR	
+
+		logger.trace("FIELD_DATA_TYPE: " + rs.getInt(FIELD_DATA_TYPE) 
+			+ ", FIELD_TYPE_NAME:" + rs.getString(FIELD_TYPE_NAME) 
+			+ ", FIELD_DECIMAL_DIGITS: " + rs.getInt(FIELD_DECIMAL_DIGITS)
+			+ ", FIELD_NUM_PREC_RADIX: " + rs.getInt(FIELD_NUM_PREC_RADIX)
+			+ ", FIELD_SQL_DATA_TYPE: " + rs.getString(FIELD_SQL_DATA_TYPE)
+		);
+		int filemakerJdbcType = rs.getInt(5);
+		if(filemakerJdbcType == Types.DOUBLE){
+			// need more information for better mapping
+			if(rs.getInt(FIELD_DECIMAL_DIGITS) < 0 && rs.getInt(FIELD_NUM_PREC_RADIX) == 10) {
+				filemakerJdbcType = Types.INTEGER;
+			}
+		}
+		return filemakerJdbcType;
+	}
+
+	
+	/*
+	 * [10]	Field  (id=211)	
+			conn	J3Connection  (id=50)	
+			length	4	
+			mod	0	
+			name	"NULLABLE" (id=247)	
+			type	4	
+
+		[17]	Field  (id=241)	
+			conn	J3Connection  (id=50)	
+			length	-1	
+			mod	0	
+			name	"IS_NULLABLE" (id=294)	
+			type	12	
+
+	 */
 
 //	@Override
 //	protected boolean includeTable(TableId table) {
