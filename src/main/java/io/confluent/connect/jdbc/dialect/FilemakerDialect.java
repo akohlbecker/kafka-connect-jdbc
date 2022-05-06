@@ -2,18 +2,25 @@ package io.confluent.connect.jdbc.dialect;
 
 import java.sql.Connection;
 import java.sql.DatabaseMetaData;
-import java.sql.DriverManager;
+import java.sql.PreparedStatement;
 import java.sql.ResultSet;
+import java.sql.ResultSetMetaData;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.sql.Types;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+import java.util.stream.Collector;
+import java.util.stream.Collectors;
 
 import org.apache.kafka.common.config.AbstractConfig;
 import org.apache.kafka.common.config.types.Password;
@@ -22,13 +29,12 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import io.confluent.connect.jdbc.dialect.DatabaseDialectProvider.SubprotocolBasedProvider;
-import io.confluent.connect.jdbc.source.JdbcSourceConnectorConfig;
 import io.confluent.connect.jdbc.util.ColumnDefinition;
+import io.confluent.connect.jdbc.util.ColumnDefinition.Mutability;
+import io.confluent.connect.jdbc.util.ColumnDefinition.Nullability;
 import io.confluent.connect.jdbc.util.ColumnId;
 import io.confluent.connect.jdbc.util.IdentifierRules;
 import io.confluent.connect.jdbc.util.TableId;
-import io.confluent.connect.jdbc.util.ColumnDefinition.Mutability;
-import io.confluent.connect.jdbc.util.ColumnDefinition.Nullability;
 
 /**
  * Complies to Filemaker JDBC v.16
@@ -38,7 +44,31 @@ import io.confluent.connect.jdbc.util.ColumnDefinition.Nullability;
 public class FilemakerDialect extends GenericDatabaseDialect {
 
 	private static final Logger logger = LoggerFactory.getLogger(FilemakerDialect.class);
+	
+	private static int CLIENT_TIMEOUT_SECONDS = 60;
+	
+	/**
+	 * The ROWID system column contains the unique ID number of the record.
+	 */
+	private static final String COLUMN_ROWID = "ROWID";
+	
+	/**
+	 * The ROWMODID system column contains the total number of times changes 
+	 * to the current record have been committed. 
+	 */
+	private static final String COLUMN_ROWMODID = "ROWMODID";
 
+	
+	private static Integer clientTimeoutSeconds = null;
+
+	public static Integer getClientTimeoutSeconds() {
+		return clientTimeoutSeconds != null ? clientTimeoutSeconds : CLIENT_TIMEOUT_SECONDS;
+	}
+	
+	public static void setClientTimeoutSeconds(Integer seconds) {
+		clientTimeoutSeconds = seconds;
+	}
+	
 	/**
 	 * The provider for {@link Filemaker16Dialect}.
 	 */
@@ -80,7 +110,6 @@ public class FilemakerDialect extends GenericDatabaseDialect {
 		
 		final Connection[] connection = new Connection[] {null};
 		final SQLException[] exceptions = new SQLException[] {null};
-		int timeoutSeconds = 60;
 
 		final CountDownLatch latch = new CountDownLatch(1);
 		Runnable getConnectionWorker = new Runnable(){
@@ -99,7 +128,7 @@ public class FilemakerDialect extends GenericDatabaseDialect {
 		try {
 			Thread t = new Thread(getConnectionWorker, "get-filemaker-jdbc-connection");
 			t.start();
-			if(latch.await(timeoutSeconds, TimeUnit.SECONDS)) { // Wait a bit longer as the login time-out set in the super class implementation
+			if(latch.await(FilemakerDialect.getClientTimeoutSeconds(), TimeUnit.SECONDS)) { // Wait a bit longer as the login time-out set in the super class implementation
 				if(connection[0] != null) {
 					return connection[0];
 				} else {
@@ -113,7 +142,7 @@ public class FilemakerDialect extends GenericDatabaseDialect {
 			} else {
 				// TIMOUT !!!!
 				t.interrupt();
-				throw new SQLException("Timeout after " + timeoutSeconds + " s - The TCP connection was established, but the Filemaker Server did not send further responses.");
+				throw new SQLException("Timeout after " + FilemakerDialect.getClientTimeoutSeconds() + " s - The TCP connection was established, but the Filemaker Server did not send further responses.");
 			}
 		} catch (InterruptedException e) {
 			throw new SQLException(e);
