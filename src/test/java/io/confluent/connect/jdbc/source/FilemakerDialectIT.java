@@ -1,4 +1,4 @@
-package io.confluent.connect.jdbc.source.integration;
+package io.confluent.connect.jdbc.source;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
@@ -6,10 +6,12 @@ import static org.junit.Assert.assertTrue;
 import java.io.IOException;
 import java.sql.SQLException;
 import java.sql.Types;
+import java.util.Arrays;
 import java.util.Calendar;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Properties;
+import java.util.TimeZone;
 
 import org.junit.Before;
 import org.junit.Ignore;
@@ -19,18 +21,19 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import io.confluent.common.utils.IntegrationTest;
+import io.confluent.connect.jdbc.dialect.DatabaseDialect;
 import io.confluent.connect.jdbc.dialect.FilemakerDialect;
-import io.confluent.connect.jdbc.source.JdbcSourceConnectorConfig;
-import io.confluent.connect.jdbc.source.JdbcSourceTaskConfig;
+import io.confluent.connect.jdbc.source.TableQuerier.QueryMode;
 import io.confluent.connect.jdbc.util.ColumnDefinition;
 import io.confluent.connect.jdbc.util.ColumnDefinition.Nullability;
-import scala.reflect.internal.Trees.New;
 import io.confluent.connect.jdbc.util.ColumnId;
 
 @Category(IntegrationTest.class)
 public class FilemakerDialectIT {
 
 	
+	private static final String JDBC_SOCKET_TIMEOUT = "10000"; // 10s
+
 	private static Logger log = LoggerFactory.getLogger(FilemakerDialectIT.class);
 	
 	private final static String FM_REMOTE_DB_URL = "jdbc:filemaker://";
@@ -58,12 +61,13 @@ public class FilemakerDialectIT {
 			log.info("    " + PASS + ":" + urlProps.getProperty(PASS));
 			log.info("-------------------------------------------------------");
 			String jdbcURL =  FM_REMOTE_DB_URL + urlProps.getProperty(HOST_PORT_PATH_PARAMS);
-			urlProps.put("SocketTimeout", "1000");
+			// urlProps.put("SocketTimeout", JDBC_SOCKET_TIMEOUT);
 			props.put(JdbcSourceConnectorConfig.CONNECTION_URL_CONFIG, jdbcURL);
 			props.put(JdbcSourceConnectorConfig.CONNECTION_USER_CONFIG, urlProps.getProperty(USER));
 			props.put(JdbcSourceConnectorConfig.CONNECTION_PASSWORD_CONFIG, urlProps.getProperty(PASS));
 			props.put(JdbcSourceConnectorConfig.MODE_CONFIG, JdbcSourceConnectorConfig.MODE_BULK);
 			props.put(JdbcSourceTaskConfig.TOPIC_PREFIX_CONFIG, "topic_");
+			FilemakerDialect.setClientTimeoutSeconds(60 * 60 * 10);
 			fmDialect = new FilemakerDialect(new JdbcSourceConnectorConfig(props));
 			
 		} catch (IOException e) {
@@ -110,6 +114,8 @@ public class FilemakerDialectIT {
      */
 	private static final String TABLE_OBJEKT = "Objekt";
 	private static final String COLUMN_OBJEKT_ID = "Objekt_ID";
+	private static final String COLUMN_ROWID = "ROWID";
+	private static final String COLUMN_ROWMODID = "ROWMODID";
 	private static final String COLUMN_AENDERUNG_DATUM = "Aenderung_Datum";
 
 	
@@ -129,7 +135,7 @@ public class FilemakerDialectIT {
 	@Test
 	public void testDescribeColumns_type_numeric() throws Exception {
 		
-		ColumnDefinition columnMetadata = columnMetadata(TABLE_OBJEKT, COLUMN_OBJEKT_ID);	
+		ColumnDefinition columnMetadata = columnMetadata(TABLE_OBJEKT, COLUMN_ROWID);	
 		assertEquals(Types.INTEGER, columnMetadata.type());
 	}
 	
@@ -160,6 +166,26 @@ public class FilemakerDialectIT {
 		
 		ColumnDefinition columnMetadata = columnMetadata(TABLE_OBJEKT, COLUMN_OBJEKT_ID);	
 		// assertTrue(columnMetadata.isAutoIncrement());
+	}
+	
+	@Test
+	//@Ignore // fails with [FileMaker][FileMaker JDBC] Cursor has been closed.
+	public void test_recordMedatada() throws SQLException {
+		TimestampIncrementingTableQuerier tableQuerier = new TimestampIncrementingTableQuerier(
+				(DatabaseDialect)fmDialect,
+				QueryMode.TABLE,
+				TABLE_OBJEKT,
+				"topic-prefix",
+				Arrays.asList(COLUMN_AENDERUNG_DATUM),
+				COLUMN_ROWID,
+				null,
+				100l, // delay 100ms
+				TimeZone.getDefault(),
+				"", // suffix to be appended to the sql query string
+				JdbcSourceConnectorConfig.TimestampGranularity.CONNECT_LOGICAL
+				);
+		tableQuerier.maybeStartQuery(fmDialect.getConnection());
+		tableQuerier.extractRecord();
 	}
 
 
