@@ -60,6 +60,7 @@
         <oracle.jdbc.driver.version>19.7.0.0</oracle.jdbc.driver.version>
         <mssqlserver.jdbc.driver.version>8.4.1.jre8</mssqlserver.jdbc.driver.version>
         <postgresql.version>42.3.2</postgresql.version>
+        <filemaker.jdbc.driver.version>19</filemaker.jdbc.driver.version>
         <jtds.driver.version>1.3.1</jtds.driver.version>
         <licenses.name>Confluent Community License</licenses.name>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
@@ -69,18 +70,27 @@
     </properties>
 
     <repositories>
-        <repository>
-            <id>confluent</id>
-            <name>Confluent</name>
-            <url>http://packages.confluent.io/maven/</url>
-        </repository>
-    </repositories>
-    
-    <distributionManagement>
-		<repository>
-			<id>ssh-repository</id>
-			<url>scpexe://andreas-kafka-test.mutech.zkm.de/opt/kafka-docker/kafka-connect/lib</url>
-		</repository>
+      <repository>
+        <id>confluent</id>
+        <name>Confluent</name>
+        <url>http://packages.confluent.io/maven/</url>
+      </repository>
+	  <repository>
+	    <id>gitlab_zkm</id>
+	    <url>https://git.zkm.de/api/v4/projects/425/packages/maven</url>
+	  </repository>
+	</repositories>
+	
+	<distributionManagement>
+	  <repository>
+	    <id>gitlab_zkm</id>
+	    <url>https://git.zkm.de/api/v4/projects/425/packages/maven</url>
+	  </repository>
+	
+	  <snapshotRepository>
+	    <id>gitlab_zkm</id>
+	    <url>https://git.zkm.de/api/v4/projects/425/packages/maven</url>
+	  </snapshotRepository>
 	</distributionManagement>
 
     <dependencies>
@@ -130,6 +140,11 @@
             <version>${mssqlserver.jdbc.driver.version}</version>
             <scope>runtime</scope>
         </dependency>
+        <dependency>
+		  <groupId>com.claris</groupId>
+		  <artifactId>fmjdbc</artifactId>
+		  <version>${filemaker.jdbc.driver.version}</version>
+		</dependency>
         <dependency>
             <groupId>net.sourceforge.jtds</groupId>
             <artifactId>jtds</artifactId>
@@ -348,6 +363,7 @@
                                 <tag>sap hana</tag>
                                 <tag>derby</tag>
                                 <tag>sqlite</tag>
+                                <tag>filemaker</tag>
                             </tags>
 
                             <confluentControlCenterIntegration>true</confluentControlCenterIntegration>
@@ -355,6 +371,28 @@
                     </execution>
                 </executions>
             </plugin>
+            <plugin>
+			    <groupId>org.codehaus.mojo</groupId>
+		        <artifactId>build-helper-maven-plugin</artifactId>
+		        <version>3.3.0</version>
+		        <executions>
+					<execution>
+		            <id>attach-artifacts</id>
+		            <phase>package</phase>
+		            <goals>
+		              <goal>attach-artifact</goal>
+		            </goals>
+		            <configuration>
+		              <artifacts>
+		                <artifact>
+		                  <file>target/components/packages/confluentinc-kafka-connect-jdbc-${project.version}.zip</file>
+		                  <type>zip</type>
+		                </artifact>
+		              </artifacts>
+		            </configuration>
+		          </execution>
+		        </executions>
+			</plugin>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-surefire-plugin</artifactId>
