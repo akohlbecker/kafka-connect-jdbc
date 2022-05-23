@@ -246,12 +246,15 @@ public class GenericDatabaseDialect implements DatabaseDialect {
     final Connection connection;
     try {
       if (dataSource == null || dataSource.isClosed()) {
-        glog.info("Creating new pool");
+        glog.debug("Creating new pool");
         final HikariConfig hikariConfig = new HikariConfig();
         hikariConfig.setJdbcUrl(jdbcUrl);
         hikariConfig.setMinimumIdle(0);
         hikariConfig.setMaximumPoolSize(5);
         hikariConfig.setDataSourceProperties(properties);
+        if(!isJDBCv4Driver()) {
+        	hikariConfig.setConnectionTestQuery(checkConnectionQuery());
+        }
         this.dataSource = new HikariDataSource(hikariConfig);
         // Timeout is 40 seconds to be as long as possible for customer to have a long connection
         // handshake, while still giving enough time to validate once in the follower worker,
@@ -293,7 +296,7 @@ public class GenericDatabaseDialect implements DatabaseDialect {
       Connection connection,
       int timeout
   ) throws SQLException {
-    if (jdbcDriverInfo().jdbcMajorVersion() >= 4) {
+    if (isJDBCv4Driver()) {
       return connection.isValid(timeout);
     }
     // issue a test query ...
@@ -315,6 +318,15 @@ public class GenericDatabaseDialect implements DatabaseDialect {
     }
     return true;
   }
+
+  /**
+   * Returns true if the JDBC driver version is at least 4. 
+   * 
+   * @return <code>true</code> if the jdbc driver version is >= 4; Otherwise <code>false</code>
+   */
+	private boolean isJDBCv4Driver() {
+		return jdbcDriverInfo != null && jdbcDriverInfo().jdbcMajorVersion() >= 4;
+	}
 
   /**
    * Return a query that can be used to check the validity of an existing database connection

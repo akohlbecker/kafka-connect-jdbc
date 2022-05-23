@@ -84,8 +84,11 @@ public class FilemakerDialect extends GenericDatabaseDialect {
 		}
 	}
 
-	private String referenceTableName = null;
-	private Integer lastConnectioHashCode = null;
+	/**
+	 * Using the system table FileMaker_Tables as reference table
+	 * as this always exists even in empty dbs.
+	 */
+	private String REFERENCE_TABLE_NAME = "FileMaker_Tables";
 
 	public FilemakerDialect(AbstractConfig config) {
 		super(config);
@@ -150,79 +153,15 @@ public class FilemakerDialect extends GenericDatabaseDialect {
 			throw e;
 		}
 	}
-
-
-	private Properties getConnectionProperties(String username, Password dbPassword) {
-		Properties properties = new Properties();
-		if (username != null) {
-			properties.setProperty("user", username);
-		}
-		if (dbPassword != null) {
-			properties.setProperty("password", dbPassword.value());
-		}
-		properties = addConnectionProperties(properties);
-		return properties;
-	}
 	
-	/**
-	 * Tries to find the first table in the Filemaker database file which not empty
-	 * and not corrupt and returns the according table name as reference for all
-	 * subsequent operations with this connection.
-	 * 
-	 * @return
-	 * @throws ConnectException
-	 */
-	private String referenceTableName() throws ConnectException {
-		try {
-			Connection connection = getConnection();
-			if (referenceTableName == null || lastConnectioHashCode == null
-					|| lastConnectioHashCode.intValue() != connection.hashCode()) {
-				List<TableId> tableIds = tableIds(getConnection());
-				if (!tableIds.isEmpty()) {
-					for (TableId tableId : tableIds) {
-						referenceTableName = tableId.tableName();
-						try (Statement statement = connection.createStatement()) {
-							if (statement.execute(checkConnectionQuery(referenceTableName))) {
-								ResultSet rs = null;
-								try {
-									// do nothing with the result set
-									rs = statement.getResultSet();
-									// table is ok!
-									lastConnectioHashCode = connection.hashCode();
-									break;
-								} finally {
-									if (rs != null) {
-										rs.close();
-									}
-								}
-							}
-						} catch (SQLException e) {
-							// try next table
-						}
-					}
-				} else {
-					logger.error("No tables in database.");
-					throw new ConnectException("No tables in database, determine current timestamp.");
-				}
-			}
-			return referenceTableName;
-		} catch (SQLException e) {
-			throw new ConnectException("Cant read table metadata.");
-		}
-	}
-
 	@Override
 	protected String currentTimestampDatabaseQuery() {
-		return "SELECT CURRENT_TIMESTAMP FROM " + referenceTableName() + " FETCH FIRST 1 ROWS ONLY";
+		return "SELECT CURRENT_TIMESTAMP FROM " + REFERENCE_TABLE_NAME + " FETCH FIRST 1 ROWS ONLY";
 	}
 
 	@Override
 	protected String checkConnectionQuery() {
-		return checkConnectionQuery(referenceTableName());
-	}
-
-	private String checkConnectionQuery(String referenceTableName) {
-		return "SELECT * FROM " + referenceTableName + " FETCH FIRST 1 ROWS ONLY";
+		return "SELECT * FROM " + REFERENCE_TABLE_NAME + " FETCH FIRST 1 ROWS ONLY";
 	}
 
 	/**
