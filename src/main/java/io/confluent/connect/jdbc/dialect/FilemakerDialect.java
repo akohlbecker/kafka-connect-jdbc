@@ -14,6 +14,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Properties;
+import java.util.Random;
 import java.util.Set;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
@@ -29,6 +30,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import io.confluent.connect.jdbc.dialect.DatabaseDialectProvider.SubprotocolBasedProvider;
+import io.confluent.connect.jdbc.source.JdbcSourceConnectorConfig;
+import io.confluent.connect.jdbc.source.JdbcSourceTaskConfig;
 import io.confluent.connect.jdbc.util.ColumnDefinition;
 import io.confluent.connect.jdbc.util.ColumnDefinition.Mutability;
 import io.confluent.connect.jdbc.util.ColumnDefinition.Nullability;
@@ -46,6 +49,11 @@ public class FilemakerDialect extends GenericDatabaseDialect {
 	private static final Logger logger = LoggerFactory.getLogger(FilemakerDialect.class);
 	
 	private static int CLIENT_TIMEOUT_SECONDS = 60;
+	
+	/**
+	 * Factor to delay starting the connector.
+	 */
+	private static float CLIENT_START_JITTER = 0.5f;
 	
 	/**
 	 * The ROWID system column contains the unique ID number of the record.
@@ -67,6 +75,15 @@ public class FilemakerDialect extends GenericDatabaseDialect {
 	
 	public static void setClientTimeoutSeconds(Integer seconds) {
 		clientTimeoutSeconds = seconds;
+	}
+	
+	protected int startupDelay() {
+		int pollInterval = config.getInt(JdbcSourceTaskConfig.POLL_INTERVAL_MS_CONFIG);
+		int jitterRange = Math.round(CLIENT_START_JITTER * pollInterval);
+		Random rand = new Random();
+		int delay = rand.nextInt(jitterRange);
+		System.err.println("startupDelay: " + delay);
+		return delay;
 	}
 	
 	/**
@@ -118,13 +135,18 @@ public class FilemakerDialect extends GenericDatabaseDialect {
 		Runnable getConnectionWorker = new Runnable(){
 			@Override
 	        public void run(){
-				try {
-					connection[0] = FilemakerDialect.super.getConnection();
-				} catch (SQLException e) {
-					exceptions[0] = e;
-				} finally {					
-					latch.countDown(); // Release await() in the main thread.
-				}
+						try {
+							Thread.sleep(startupDelay());
+						} catch (InterruptedException e1) {
+							logger.warn("startupDelay was interrupted");
+						}
+						try {
+							connection[0] = FilemakerDialect.super.getConnection();
+						} catch (SQLException e) {
+							exceptions[0] = e;
+						} finally {					
+							latch.countDown(); // Release await() in the main thread.
+						}
 	        }
 		};
 		
@@ -143,7 +165,7 @@ public class FilemakerDialect extends GenericDatabaseDialect {
 					}
 				}
 			} else {
-				// TIMOUT !!!!
+				// TIMEOUT !!!!
 				t.interrupt();
 				throw new SQLException("Timeout after " + FilemakerDialect.getClientTimeoutSeconds() + " s - The TCP connection was established, but the Filemaker Server did not send further responses.");
 			}
