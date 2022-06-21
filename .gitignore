@@ -17,3 +17,9 @@ derby.log
 __test_database_*
 test.sqlite
 *.db-journal
+.classpath
+.project
+.settings
+FilemakerJdbcConnect.properties
+.checkstyle
+libs/
