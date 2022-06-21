@@ -31,7 +31,6 @@ public class ConnectionPoolProvider {
 	}
 	
 	/**
-	 * 
 	 * @param jdbcUrl a jdbc data source uri like e.g.:
 	 *   {@code jdbc:filemaker://<filemaker host IP address>/<databasename>?user=<databaseusername>&password=<databasepassword>}
   
@@ -62,7 +61,7 @@ public class ConnectionPoolProvider {
 			logger.warn("DatabaseDialect instance " + dialect + " is not registered here!");		
 		}
 		if(!dialectInstanceRegistry.get(databaseKey).remove(dialect)) {
-			logger.warn("DatabaseDialect instance " + dialect + " is not registered for this jdbc uri " + dialect.sanitizedUrl(dialect.jdbcUrl) + "!");		
+			logger.warn("DatabaseDialect instance " + dialect + " is no longer registered for this jdbc uri " + dialect.sanitizedUrl(dialect.jdbcUrl) + ".");		
 		}
 		if(dialectInstanceRegistry.get(databaseKey).isEmpty()) {
 			logger.info("No more DatabaseDialect instances for this databaseKey. Closing and removing pool now ...");
@@ -73,7 +72,7 @@ public class ConnectionPoolProvider {
 	}
 
 	private HikariDataSource initPool(Properties properties, GenericDatabaseDialect dialect) throws SQLException {
-		logger.debug("Creating new pool for " + dialect.identifier());
+		logger.info("Creating new pool for " + dialect.identifier());
 		final HikariConfig hikariConfig = new HikariConfig();
 		hikariConfig.setJdbcUrl(dialect.jdbcUrl);
 		hikariConfig.setMinimumIdle(0);
