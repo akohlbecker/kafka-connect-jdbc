@@ -57,7 +57,8 @@ public class JdbcSourceConnectorConfig extends AbstractConfig {
   public static final String CONNECTION_PREFIX = "connection.";
 
   public static final String CONNECTION_POOL_CONFIG = CONNECTION_PREFIX + "pool";
-  public static final String CONNECTION_POOL_DOC = "Use a connection pool per jdbc host";
+  public static final String CONNECTION_POOL_DOC = "Use a connection pool per jdbc host. By default this is disabled."
+  		+ "For Filemaker Server connections it is highly recommended to use the connection pool, though!";
   public static final String CONNECTION_POOL_DISPLAY = "JDBC connection pool";
   
   public static final String CONNECTION_URL_CONFIG = CONNECTION_PREFIX + "url";
@@ -358,7 +359,7 @@ public class JdbcSourceConnectorConfig extends AbstractConfig {
     ).define(
         CONNECTION_POOL_CONFIG,
         Type.BOOLEAN,
-        null,
+        Boolean.FALSE,
         Importance.HIGH,
         CONNECTION_POOL_DOC,
         DATABASE_GROUP,
