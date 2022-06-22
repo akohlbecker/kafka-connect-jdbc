@@ -53,7 +53,7 @@ public class FilemakerDialect extends GenericDatabaseDialect {
 	/**
 	 * Factor to delay starting the connector.
 	 */
-	private static float CLIENT_START_JITTER = 0.5f;
+	private static float CLIENT_START_JITTER = 1f;
 	
 	/**
 	 * The ROWID system column contains the unique ID number of the record.
