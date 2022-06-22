@@ -235,6 +235,7 @@ public class GenericDatabaseDialect implements DatabaseDialect {
     // These config names are the same for both source and sink configs ...
     String username = config.getString(JdbcSourceConnectorConfig.CONNECTION_USER_CONFIG);
     Password dbPassword = config.getPassword(JdbcSourceConnectorConfig.CONNECTION_PASSWORD_CONFIG);
+    boolean useConnectionPool = config.getBoolean(JdbcSourceConnectorConfig.CONNECTION_POOL_CONFIG);
     Properties properties = new Properties();
     if (username != null) {
       properties.setProperty("user", username);
@@ -243,33 +244,42 @@ public class GenericDatabaseDialect implements DatabaseDialect {
       properties.setProperty("password", dbPassword.value());
     }
     properties = addConnectionProperties(properties);
+
     final Connection connection;
-    try {
-      if (dataSource == null || dataSource.isClosed()) {
-        glog.debug("Creating new pool");
-        final HikariConfig hikariConfig = new HikariConfig();
-        hikariConfig.setJdbcUrl(jdbcUrl);
-        hikariConfig.setMinimumIdle(0);
-        hikariConfig.setMaximumPoolSize(5);
-        hikariConfig.setDataSourceProperties(properties);
-        if(!isJDBCv4Driver()) {
-        	hikariConfig.setConnectionTestQuery(checkConnectionQuery());
-        }
-        this.dataSource = new HikariDataSource(hikariConfig);
-        // Timeout is 40 seconds to be as long as possible for customer to have a long connection
-        // handshake, while still giving enough time to validate once in the follower worker,
-        // and again in the leader worker and still be under 90s REST serving timeout
-        dataSource.setLoginTimeout(40);
-      }
-      connection = dataSource.getConnection();
-    } catch (RuntimeException e) {
-      if (e.getClass().getPackage().getName().startsWith("com.zaxxer.hikari")) {
-        throw new SQLException(e);
-      }
-      if (e.getMessage().contains("Failed to get driver instance")) {
-        throw new SQLException("Hikari didn't find the driver", e);
-      }
-      throw e;
+    
+    // Timeout is 40 seconds to be as long as possible for customer to have a long connection
+    // handshake, while still giving enough time to validate once in the follower worker,
+    // and again in the leader worker and still be under 90s REST serving timeout
+    final int loginTimeout = 40;
+    
+    if(!useConnectionPool) {
+	    DriverManager.setLoginTimeout(loginTimeout);
+	    connection = DriverManager.getConnection(jdbcUrl, properties);
+    } else {
+    	try {
+    		if (dataSource == null || dataSource.isClosed()) {
+    			glog.debug("Creating new pool");
+    			final HikariConfig hikariConfig = new HikariConfig();
+    			hikariConfig.setJdbcUrl(jdbcUrl);
+    			hikariConfig.setMinimumIdle(0);
+    			hikariConfig.setMaximumPoolSize(2);
+    			hikariConfig.setDataSourceProperties(properties);
+    			if(!isJDBCv4Driver()) {
+    				hikariConfig.setConnectionTestQuery(checkConnectionQuery());
+    			}
+    			this.dataSource = new HikariDataSource(hikariConfig);
+    			dataSource.setLoginTimeout(loginTimeout);
+    		}
+    		connection = dataSource.getConnection();
+    	} catch (RuntimeException e) {
+    		if (e.getClass().getPackage().getName().startsWith("com.zaxxer.hikari")) {
+    			throw new SQLException(e);
+    		}
+    		if (e.getMessage().contains("Failed to get driver instance")) {
+    			throw new SQLException("Hikari didn't find the driver", e);
+    		}
+    		throw e;
+    	}
     }
     if (jdbcDriverInfo == null) {
       jdbcDriverInfo = createJdbcDriverInfo(connection);

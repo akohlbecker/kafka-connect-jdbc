@@ -56,6 +56,10 @@ public class JdbcSourceConnectorConfig extends AbstractConfig {
 
   public static final String CONNECTION_PREFIX = "connection.";
 
+  public static final String CONNECTION_POOL_CONFIG = CONNECTION_PREFIX + "pool";
+  public static final String CONNECTION_POOL_DOC = "Use a connection pool per jdbc host";
+  public static final String CONNECTION_POOL_DISPLAY = "JDBC connection pool";
+  
   public static final String CONNECTION_URL_CONFIG = CONNECTION_PREFIX + "url";
   private static final String CONNECTION_URL_DOC =
       "JDBC connection URL.\n"
@@ -351,6 +355,16 @@ public class JdbcSourceConnectorConfig extends AbstractConfig {
         Width.LONG,
         CONNECTION_URL_DISPLAY,
         Arrays.asList(TABLE_WHITELIST_CONFIG, TABLE_BLACKLIST_CONFIG)
+    ).define(
+        CONNECTION_POOL_CONFIG,
+        Type.BOOLEAN,
+        null,
+        Importance.HIGH,
+        CONNECTION_POOL_DOC,
+        DATABASE_GROUP,
+        ++orderInGroup,
+        Width.SHORT,
+        CONNECTION_POOL_DISPLAY
     ).define(
         CONNECTION_USER_CONFIG,
         Type.STRING,
