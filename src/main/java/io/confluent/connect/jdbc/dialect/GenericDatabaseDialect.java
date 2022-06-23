@@ -15,22 +15,6 @@
 
 package io.confluent.connect.jdbc.dialect;
 
-import com.zaxxer.hikari.HikariConfig;
-import com.zaxxer.hikari.HikariDataSource;
-import java.time.ZoneOffset;
-import java.util.TimeZone;
-import org.apache.kafka.common.config.AbstractConfig;
-import org.apache.kafka.common.config.types.Password;
-import org.apache.kafka.connect.data.Date;
-import org.apache.kafka.connect.data.Decimal;
-import org.apache.kafka.connect.data.Schema;
-import org.apache.kafka.connect.data.SchemaBuilder;
-import org.apache.kafka.connect.data.Struct;
-import org.apache.kafka.connect.data.Time;
-import org.apache.kafka.connect.errors.ConnectException;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 import java.io.IOException;
 import java.math.BigDecimal;
 import java.net.URL;
@@ -48,6 +32,7 @@ import java.sql.SQLXML;
 import java.sql.Statement;
 import java.sql.Timestamp;
 import java.sql.Types;
+import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Calendar;
@@ -62,9 +47,24 @@ import java.util.Map;
 import java.util.Properties;
 import java.util.Queue;
 import java.util.Set;
+import java.util.TimeZone;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
+
+import org.apache.kafka.common.config.AbstractConfig;
+import org.apache.kafka.common.config.types.Password;
+import org.apache.kafka.connect.data.Date;
+import org.apache.kafka.connect.data.Decimal;
+import org.apache.kafka.connect.data.Schema;
+import org.apache.kafka.connect.data.SchemaBuilder;
+import org.apache.kafka.connect.data.Struct;
+import org.apache.kafka.connect.data.Time;
+import org.apache.kafka.connect.errors.ConnectException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import com.zaxxer.hikari.HikariDataSource;
 
 import io.confluent.connect.jdbc.dialect.DatabaseDialectProvider.FixedScoreProvider;
 import io.confluent.connect.jdbc.sink.JdbcSinkConfig;
@@ -110,6 +110,11 @@ public class GenericDatabaseDialect implements DatabaseDialect {
 
   // The maximum precision that can be achieved in a signed 64-bit integer is 2^63 ~= 9.223372e+18
   private static final int MAX_INTEGER_TYPE_PRECISION = 18;
+  
+  // Timeout is 40 seconds to be as long as possible for customer to have a long connection
+  // handshake, while still giving enough time to validate once in the follower worker,
+  // and again in the leader worker and still be under 90s REST serving timeout
+  protected static final int LOGIN_TIMEOUT = 40;
 
   private static final String PRECISION_FIELD = "connect.decimal.precision";
 
@@ -156,7 +161,7 @@ public class GenericDatabaseDialect implements DatabaseDialect {
   private final int batchMaxRows;
   private final TimeZone timeZone;
   private final JdbcSourceConnectorConfig.TimestampGranularity tsGranularity;
-  private HikariDataSource dataSource;
+  private HikariDataSource dataSourcePool;
 
   /**
    * Create a new dialect instance with the given connector configuration.
@@ -246,31 +251,17 @@ public class GenericDatabaseDialect implements DatabaseDialect {
     properties = addConnectionProperties(properties);
 
     final Connection connection;
-    
-    // Timeout is 40 seconds to be as long as possible for customer to have a long connection
-    // handshake, while still giving enough time to validate once in the follower worker,
-    // and again in the leader worker and still be under 90s REST serving timeout
-    final int loginTimeout = 40;
+   
     
     if(!useConnectionPool) {
-	    DriverManager.setLoginTimeout(loginTimeout);
+	    DriverManager.setLoginTimeout(LOGIN_TIMEOUT);
 	    connection = DriverManager.getConnection(jdbcUrl, properties);
     } else {
     	try {
-    		if (dataSource == null || dataSource.isClosed()) {
-    			glog.debug("Creating new pool");
-    			final HikariConfig hikariConfig = new HikariConfig();
-    			hikariConfig.setJdbcUrl(jdbcUrl);
-    			hikariConfig.setMinimumIdle(0);
-    			hikariConfig.setMaximumPoolSize(2);
-    			hikariConfig.setDataSourceProperties(properties);
-    			if(!isJDBCv4Driver()) {
-    				hikariConfig.setConnectionTestQuery(checkConnectionQuery());
-    			}
-    			this.dataSource = new HikariDataSource(hikariConfig);
-    			dataSource.setLoginTimeout(loginTimeout);
+    		if (dataSourcePool == null || dataSourcePool.isClosed()) {
+    			dataSourcePool = ConnectionPoolProvider.singleton().getConnectionPool(properties, this);
     		}
-    		connection = dataSource.getConnection();
+    		connection = dataSourcePool.getConnection();
     	} catch (RuntimeException e) {
     		if (e.getClass().getPackage().getName().startsWith("com.zaxxer.hikari")) {
     			throw new SQLException(e);
@@ -290,14 +281,19 @@ public class GenericDatabaseDialect implements DatabaseDialect {
 
   @Override
   public void close() {
-    this.dataSource.close();
-    Connection conn;
-    while ((conn = connections.poll()) != null) {
-      try {
-        conn.close();
-      } catch (Throwable e) {
-        glog.warn("Error while closing connection to {}", jdbcDriverInfo, e);
-      }
+
+    boolean useConnectionPool = config.getBoolean(JdbcSourceConnectorConfig.CONNECTION_POOL_CONFIG);
+    if(!useConnectionPool) {
+	    Connection conn;
+	    while ((conn = connections.poll()) != null) {
+	      try {
+	        conn.close();
+	      } catch (Throwable e) {
+	        glog.warn("Error while closing connection to {}", jdbcDriverInfo, e);
+	      }
+	    }
+    } else {
+    	ConnectionPoolProvider.singleton().release(this);
     }
   }
 
@@ -334,7 +330,7 @@ public class GenericDatabaseDialect implements DatabaseDialect {
    * 
    * @return <code>true</code> if the jdbc driver version is >= 4; Otherwise <code>false</code>
    */
-	private boolean isJDBCv4Driver() {
+	public boolean isJDBCv4Driver() {
 		return jdbcDriverInfo != null && jdbcDriverInfo().jdbcMajorVersion() >= 4;
 	}
 
@@ -1989,4 +1985,8 @@ public class GenericDatabaseDialect implements DatabaseDialect {
   public String toString() {
     return name();
   }
+
+	public int getLoginTimeout() {
+		return LOGIN_TIMEOUT;
+	}
 }
