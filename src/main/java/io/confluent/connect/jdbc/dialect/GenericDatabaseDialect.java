@@ -251,7 +251,6 @@ public class GenericDatabaseDialect implements DatabaseDialect {
     properties = addConnectionProperties(properties);
 
     final Connection connection;
-   
     
     if(!useConnectionPool) {
 	    DriverManager.setLoginTimeout(LOGIN_TIMEOUT);

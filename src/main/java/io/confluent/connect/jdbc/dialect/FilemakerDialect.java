@@ -53,7 +53,7 @@ public class FilemakerDialect extends GenericDatabaseDialect {
 	/**
 	 * Factor to delay starting the connector.
 	 */
-	private static float CLIENT_START_JITTER = 1f;
+	private static float CLIENT_START_JITTER = 0f;
 	
 	/**
 	 * The ROWID system column contains the unique ID number of the record.
@@ -78,11 +78,14 @@ public class FilemakerDialect extends GenericDatabaseDialect {
 	}
 	
 	protected int startupDelay() {
-		int pollInterval = config.getInt(JdbcSourceTaskConfig.POLL_INTERVAL_MS_CONFIG);
-		int jitterRange = Math.round(CLIENT_START_JITTER * pollInterval);
-		Random rand = new Random();
-		int delay = rand.nextInt(jitterRange);
-		System.err.println("startupDelay: " + delay);
+		int delay = 0;
+		if(CLIENT_START_JITTER > 0) {
+			int pollInterval = config.getInt(JdbcSourceTaskConfig.POLL_INTERVAL_MS_CONFIG);
+			int jitterRange = Math.round(CLIENT_START_JITTER * pollInterval);
+			Random rand = new Random();
+			delay = rand.nextInt(jitterRange);
+			logger.debug("startupDelay: " + delay);
+		}
 		return delay;
 	}
 	
@@ -135,11 +138,11 @@ public class FilemakerDialect extends GenericDatabaseDialect {
 		Runnable getConnectionWorker = new Runnable(){
 			@Override
 	        public void run(){
-						try {
-							Thread.sleep(startupDelay());
-						} catch (InterruptedException e1) {
-							logger.warn("startupDelay was interrupted");
-						}
+//						try {
+////							Thread.sleep(startupDelay());
+//						} catch (InterruptedException e1) {
+//							logger.warn("startupDelay was interrupted");
+//						}
 						try {
 							connection[0] = FilemakerDialect.super.getConnection();
 						} catch (SQLException e) {
