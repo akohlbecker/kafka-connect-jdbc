@@ -76,6 +76,7 @@
         <url>http://packages.confluent.io/maven/</url>
       </repository>
 	  <repository>
+	    <!-- https://git.zkm.de/data-infrastructure/kafka-connect-jdbc/-/packages -->
 	    <id>gitlab_zkm</id>
 	    <url>https://git.zkm.de/api/v4/projects/425/packages/maven</url>
 	  </repository>
@@ -83,11 +84,13 @@
 	
 	<distributionManagement>
 	  <repository>
+	    <!-- https://git.zkm.de/data-infrastructure/kafka-connect-jdbc/-/packages -->
 	    <id>gitlab_zkm</id>
 	    <url>https://git.zkm.de/api/v4/projects/425/packages/maven</url>
 	  </repository>
 	
 	  <snapshotRepository>
+	    <!-- https://git.zkm.de/data-infrastructure/kafka-connect-jdbc/-/packages -->
 	    <id>gitlab_zkm</id>
 	    <url>https://git.zkm.de/api/v4/projects/425/packages/maven</url>
 	  </snapshotRepository>
