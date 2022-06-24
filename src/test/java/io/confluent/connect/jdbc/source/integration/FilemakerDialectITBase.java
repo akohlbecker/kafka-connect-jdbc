@@ -57,6 +57,11 @@ public abstract class FilemakerDialectITBase {
 			
 	}
 	
+	protected String composeJdbcUrlWithAuth(String baseJdbcURL) {
+		return baseJdbcURL + "?" + dbUserAccountQueryParamsString + "&SocketTimeout=" + JDBC_SOCKET_TIMEOUT;
+	}
+
 	public abstract Properties jdbcConnectionProperties();
+
 
 }

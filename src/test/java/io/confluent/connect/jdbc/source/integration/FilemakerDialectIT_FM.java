@@ -6,9 +6,11 @@ import static org.junit.Assert.assertTrue;
 import java.io.IOException;
 import java.sql.SQLException;
 import java.sql.Types;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Calendar;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 import java.util.TimeZone;
@@ -71,11 +73,29 @@ public class FilemakerDialectIT_FM extends FilemakerDialectITBase {
 		}
 	}
 	
-	private Properties makePoolProperties() {
+	private Properties jdbcConnectionPoolProperties() {
 		Properties props =  jdbcConnectionProperties(); 
 		props.put(JdbcSourceConnectorConfig.CONNECTION_POOL_CONFIG, true);
 		return props;
 	}
+	
+	/**
+   * Create a {@link JdbcSourceConnectorConfig} with the specified URL and optional config props.
+   *
+   * @param url           the database URL; may not be null
+   * @return the config; never null
+   */
+  protected JdbcSourceConnectorConfig sourceConfigWithUrl(
+      String url,
+      String... propertyPairs
+  ) {
+    Map<String, String> connProps = new HashMap<>();
+    connProps.put(JdbcSourceConnectorConfig.MODE_CONFIG, JdbcSourceConnectorConfig.MODE_BULK);
+    connProps.put(JdbcSourceConnectorConfig.TOPIC_PREFIX_CONFIG, "test-");
+    // connProps.putAll(propertiesFromPairs(propertyPairs));
+    connProps.put(JdbcSourceConnectorConfig.CONNECTION_URL_CONFIG, url);
+    return new JdbcSourceConnectorConfig(connProps);
+  }
 
 	@Test
 	public void testCurrentTimeOnDB() throws Exception {
@@ -117,6 +137,8 @@ public class FilemakerDialectIT_FM extends FilemakerDialectITBase {
 	private static final String COLUMN_OBJEKT_ID = "Objekt_ID";
 	private static final String COLUMN_ROWID = "ROWID";
 	private static final String COLUMN_AENDERUNG_DATUM = "Aenderung_Datum";
+
+	private static final long POLLING_INTERVAL_MS = 500;
 
 	
 	@Test
@@ -178,16 +200,65 @@ public class FilemakerDialectIT_FM extends FilemakerDialectITBase {
 	}
 	
 	@Test
-	public void testGetPool() throws SQLException {
-		FilemakerDialect dialect_db1_1 = new FilemakerDialect(sourceConfigWithUrl(jdbcURL_db1 + "?" + dbUserAccountQueryParamsString + "&SocketTimeout=" + JDBC_SOCKET_TIMEOUT));
-		FilemakerDialect dialect_db1_2 = new FilemakerDialect(sourceConfigWithUrl(jdbcURL_db1 + "?" + dbUserAccountQueryParamsString + "&SocketTimeout=" + JDBC_SOCKET_TIMEOUT));
-		FilemakerDialect dialect_db2_1 = new FilemakerDialect(sourceConfigWithUrl(jdbcURL_db2 + "?" + dbUserAccountQueryParamsString + "&SocketTimeout=" + JDBC_SOCKET_TIMEOUT));
+	public void testConcurrentConnections_1() throws SQLException, InterruptedException {
+		
+		List<FilemakerDialect> dialectInstances = new ArrayList<>();
+		int numConnections = 5;
+		for (int i = 0; i < numConnections; i++) {
+			dialectInstances.add( 
+					new FilemakerDialect(sourceConfigWithUrl(composeJdbcUrlWithAuth(jdbcURL_db1)))
+			);
+		}
+		List<SQLException> exceptions = new ArrayList<>();
+		
+		dialectInstances.forEach( d -> {
+			try {
+				d.getConnection();
+			} catch (SQLException e) {
+				System.err.println(e.getMessage());
+				exceptions.add(e);
+			}
+		});
+		
+		assertTrue(exceptions.isEmpty());
+		
+		Thread.sleep(POLLING_INTERVAL_MS);
+		
+		dialectInstances.forEach( d -> {
+			try {
+				d.getConnection();
+			} catch (SQLException e) {
+				e.printStackTrace();
+			}
+		});
+		
+		assertTrue(exceptions.isEmpty());
+		
+		Thread.sleep(POLLING_INTERVAL_MS);
+		
+		dialectInstances.forEach( d -> {
+			try {
+				d.close();
+				d.getConnection();
+			} catch (SQLException e) {
+				e.printStackTrace();
+			}
+		});
+		
+		assertTrue(exceptions.isEmpty());
+	}
 
-		ConnectionPoolProvider.singleton().getConnectionPool(makePoolProperties(), dialect_db1_1);
+	@Test
+	public void testGetPool() throws SQLException {
+		FilemakerDialect dialect_db1_1 = new FilemakerDialect(sourceConfigWithUrl(composeJdbcUrlWithAuth(jdbcURL_db1)));
+		FilemakerDialect dialect_db1_2 = new FilemakerDialect(sourceConfigWithUrl(composeJdbcUrlWithAuth(jdbcURL_db1)));
+		FilemakerDialect dialect_db2_1 = new FilemakerDialect(sourceConfigWithUrl(composeJdbcUrlWithAuth(jdbcURL_db2)));
+
+		ConnectionPoolProvider.singleton().getConnectionPool(jdbcConnectionPoolProperties(), dialect_db1_1);
 		assertEquals(1, ConnectionPoolProvider.singleton().poolCount());
-		ConnectionPoolProvider.singleton().getConnectionPool(makePoolProperties(), dialect_db1_2);
+		ConnectionPoolProvider.singleton().getConnectionPool(jdbcConnectionPoolProperties(), dialect_db1_2);
 		assertEquals(1, ConnectionPoolProvider.singleton().poolCount());
-		ConnectionPoolProvider.singleton().getConnectionPool(makePoolProperties(), dialect_db2_1);
+		ConnectionPoolProvider.singleton().getConnectionPool(jdbcConnectionPoolProperties(), dialect_db2_1);
 		assertEquals(2, ConnectionPoolProvider.singleton().poolCount());
 		ConnectionPoolProvider.singleton().release(dialect_db1_1);
 		assertEquals(2, ConnectionPoolProvider.singleton().poolCount());
@@ -196,27 +267,6 @@ public class FilemakerDialectIT_FM extends FilemakerDialectITBase {
 		ConnectionPoolProvider.singleton().release(dialect_db2_1);
 		assertEquals(0, ConnectionPoolProvider.singleton().poolCount());
 	}
-
-
-	
-	/**
-   * Create a {@link JdbcSourceConnectorConfig} with the specified URL and optional config props.
-   *
-   * @param url           the database URL; may not be null
-   * @param propertyPairs optional set of config name-value pairs; must be an even number
-   * @return the config; never null
-   */
-  protected JdbcSourceConnectorConfig sourceConfigWithUrl(
-      String url,
-      String... propertyPairs
-  ) {
-    Map<String, String> connProps = new HashMap<>();
-    connProps.put(JdbcSourceConnectorConfig.MODE_CONFIG, JdbcSourceConnectorConfig.MODE_BULK);
-    connProps.put(JdbcSourceConnectorConfig.TOPIC_PREFIX_CONFIG, "test-");
-    // connProps.putAll(propertiesFromPairs(propertyPairs));
-    connProps.put(JdbcSourceConnectorConfig.CONNECTION_URL_CONFIG, url);
-    return new JdbcSourceConnectorConfig(connProps);
-  }
 
 
 }
