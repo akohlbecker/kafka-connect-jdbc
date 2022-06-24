@@ -14,7 +14,7 @@
 			    A token to authenticate with certain API endpoints. 
 			    The token is valid as long as the job is running. 
 			 -->
-            <value>${CI_JOB_TOKEN}</value>
+            <value>${env.CI_JOB_TOKEN}</value>
           </property>
         </httpHeaders>
       </configuration>
