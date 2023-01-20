@@ -76,6 +76,7 @@ public class JdbcSourceConnectorConfig extends AbstractConfig {
           + "``jdbc:sqlserver://localhost;instance=SQLEXPRESS;"
           + "databaseName=db_name``";
   private static final String CONNECTION_URL_DISPLAY = "JDBC URL";
+  private static final String CONNECTION_URL_DEFAULT = "";
 
   public static final String CONNECTION_USER_CONFIG = CONNECTION_PREFIX + "user";
   private static final String CONNECTION_USER_DOC = "JDBC connection user.";
@@ -218,6 +219,11 @@ public class JdbcSourceConnectorConfig extends AbstractConfig {
   private static final EnumRecommender TIMESTAMP_GRANULARITY_RECOMMENDER =
       EnumRecommender.in(TimestampGranularity.values());
 
+  /* The amount of time to wait for the table monitoring thread to complete initial table read */
+  public static final String TABLE_MONITORING_STARTUP_POLLING_LIMIT_MS_CONFIG =
+      "table.monitoring.startup.polling.limit.ms";
+  public static final long TABLE_MONITORING_STARTUP_POLLING_LIMIT_MS_DEFAULT = 10 * 1000;
+
   public static final String TABLE_POLL_INTERVAL_MS_CONFIG = "table.poll.interval.ms";
   private static final String TABLE_POLL_INTERVAL_MS_DOC =
       "Frequency in ms to poll for new or removed tables, which may result in updated task "
@@ -316,6 +322,12 @@ public class JdbcSourceConnectorConfig extends AbstractConfig {
   public static final String QUERY_SUFFIX_DOC = 
       "Suffix to append at the end of the generated query.";
   public static final String QUERY_SUFFIX_DISPLAY = "Query suffix";
+
+  public static final String QUERY_RETRIES_CONFIG = "query.retry.attempts";
+  public static final String QUERY_RETRIES_DEFAULT = "-1";
+  public static final String QUERY_RETRIES_DOC =
+          "Number of times to retry SQL exceptions encountered when executing queries.";
+  public static final String QUERY_RETRIES_DISPLAY = "Query Retry Attempts";
 
   private static final EnumRecommender QUOTE_METHOD_RECOMMENDER =
       EnumRecommender.in(QuoteMethod.values());
@@ -417,6 +429,7 @@ public class JdbcSourceConnectorConfig extends AbstractConfig {
     config.define(
         CONNECTION_URL_CONFIG,
         Type.STRING,
+        CONNECTION_URL_DEFAULT,
         Importance.HIGH,
         CONNECTION_URL_DOC,
         DATABASE_GROUP,
@@ -661,6 +674,16 @@ public class JdbcSourceConnectorConfig extends AbstractConfig {
         Width.MEDIUM,
         TRANSACTION_ISOLATION_MODE_DISPLAY,
         TRANSACTION_ISOLATION_MODE_RECOMMENDER
+    ).define(
+        QUERY_RETRIES_CONFIG,
+        Type.INT,
+        QUERY_RETRIES_DEFAULT,
+        Importance.LOW,
+        QUERY_RETRIES_DOC,
+        MODE_GROUP,
+        ++orderInGroup,
+        Width.MEDIUM,
+        QUERY_RETRIES_DISPLAY
     );
   }
 
@@ -696,6 +719,11 @@ public class JdbcSourceConnectorConfig extends AbstractConfig {
         ++orderInGroup,
         Width.SHORT,
         BATCH_MAX_ROWS_DISPLAY
+    ).defineInternal(
+        TABLE_MONITORING_STARTUP_POLLING_LIMIT_MS_CONFIG,
+        Type.LONG,
+        TABLE_MONITORING_STARTUP_POLLING_LIMIT_MS_DEFAULT,
+        Importance.LOW
     ).define(
         TABLE_POLL_INTERVAL_MS_CONFIG,
         Type.LONG,
@@ -776,10 +804,6 @@ public class JdbcSourceConnectorConfig extends AbstractConfig {
 
   public JdbcSourceConnectorConfig(Map<String, ?> props) {
     super(CONFIG_DEF, props);
-    String mode = getString(JdbcSourceConnectorConfig.MODE_CONFIG);
-    if (mode.equals(JdbcSourceConnectorConfig.MODE_UNSPECIFIED)) {
-      throw new ConfigException("Query mode must be specified");
-    }
   }
 
   public String topicPrefix() {
