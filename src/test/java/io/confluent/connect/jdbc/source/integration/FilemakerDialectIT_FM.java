@@ -110,7 +110,8 @@ public class FilemakerDialectIT_FM extends FilemakerDialectITBase {
 
 	private ColumnDefinition columnMetadata(String tableName, String columnName) throws SQLException {
 		Map<ColumnId, ColumnDefinition> columnMetadataMap = fmDialect.describeColumns(fmDialect.getConnection(), tableName, columnName);
-		assertEquals(1, columnMetadataMap.size());
+		assertTrue("No column returned, please  check the field name", columnMetadataMap.size() > 0);
+		assertEquals("More than one columns returned, please  check the field name", 1, columnMetadataMap.size());
 		assertEquals("\""+tableName+"\".\""+columnName+"\"", columnMetadataMap.keySet().iterator().next().toString());
 		ColumnDefinition columnMetadata = columnMetadataMap.values().iterator().next();
 		return columnMetadata;
@@ -137,6 +138,8 @@ public class FilemakerDialectIT_FM extends FilemakerDialectITBase {
 	private static final String COLUMN_OBJEKT_ID = "Objekt_ID";
 	private static final String COLUMN_ROWID = "ROWID";
 	private static final String COLUMN_AENDERUNG_DATUM = "Aenderung_Datum";
+	private static final String COLUMN_ERSTELLUNG_DATUM = "Erstellung_Datum";
+	
 
 	private static final long POLLING_INTERVAL_MS = 500;
 
@@ -150,11 +153,17 @@ public class FilemakerDialectIT_FM extends FilemakerDialectITBase {
 		assertEquals(Nullability.NULL, columnMetadata.nullability());
 	}
 	
-	
 	@Test
 	public void testDescribeColumns_type_timestamp() throws Exception {
 		ColumnDefinition columnMetadata = columnMetadata(TABLE_OBJEKT, COLUMN_AENDERUNG_DATUM);	
 		assertEquals(Types.TIMESTAMP, columnMetadata.type());
+	}
+	
+	
+	@Test
+	public void testDescribeColumns_type_date() throws Exception {
+		ColumnDefinition columnMetadata = columnMetadata(TABLE_OBJEKT, COLUMN_ERSTELLUNG_DATUM);
+		assertEquals(Types.NVARCHAR, columnMetadata.type());
 	}
 	
 //	@Test

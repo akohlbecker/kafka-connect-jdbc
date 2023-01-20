@@ -303,7 +303,7 @@ public class FilemakerDialect extends GenericDatabaseDialect {
 	 */
 	private int jdbcType(ResultSet rs) throws SQLException {
 		
-		// field id calcalculated as from 0-based index + 1 for 1 based column index:
+		// field id calculated as from 0-based index + 1 for 1 based column index:
 		final int FIELD_DATA_TYPE = 4 + 1;      // type	4 = INT	
 		final int FIELD_TYPE_NAME = 5 + 1;      // type	12 = VARCHAR	
 		final int FIELD_DECIMAL_DIGITS = 8 + 1; // type	4 = INT	
@@ -322,6 +322,14 @@ public class FilemakerDialect extends GenericDatabaseDialect {
 			if(rs.getInt(FIELD_DECIMAL_DIGITS) < 0 && rs.getInt(FIELD_NUM_PREC_RADIX) == 10) {
 				filemakerJdbcType = Types.INTEGER;
 			}
+		}
+		if(filemakerJdbcType == Types.DATE){
+			// SQL DATE type would be mapped my kafka-connect to the connect Date type which requires time fields
+			// As Filemaker Date is purely date information we need to map it to NVARCHAR in order to let 
+			// it treat as String in 
+			// by this we are avoiding:
+			// org.apache.kafka.connect.errors.DataException: Kafka Connect Date type should not have any time fields set to non-zero values.
+			filemakerJdbcType = Types.NVARCHAR;
 		}
 		return filemakerJdbcType;
 	}
