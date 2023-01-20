@@ -23,7 +23,7 @@
         <version>6.0.0</version>
     </parent>
 
-    <groupId>io.confluent</groupId>
+    <groupId>de.zkm</groupId>
     <artifactId>kafka-connect-jdbc</artifactId>
     <packaging>jar</packaging>
     <version>10.6.3</version>
