@@ -1,4 +1,4 @@
-# Kafka Connect JDBC Connector
+# Kafka Connect JDBC Connector with Filemaker
 
 *This project is a fork of the official confluent `kafka-connect-jdbc` project that extends the latter by the Filemaker JDBC dialect (v16 - v19)*
 
