@@ -1,5 +1,7 @@
 # Kafka Connect JDBC Connector
 
+*This project is a fork of the official confluent `kafka-connect-jdbc` project that extends the latter by the Filemaker JDBC dialect (v16 - v19)*
+
 kafka-connect-jdbc is a [Kafka Connector](http://kafka.apache.org/documentation.html#connect)
 for loading data to and from any JDBC-compatible database.
 
@@ -12,7 +14,9 @@ for guidance on this process.
 
 You can build kafka-connect-jdbc with Maven using the standard lifecycle phases.
 
-# Running the FilemakerDialect integration tests
+# FilemakerDialect
+
+## Running the FilemakerDialect integration tests
 
 There is no way to use FileMaker Server for testing without purchasing a license or applying for a 
 test license at the customer service. So running integration tests which require a these FileMaker Server 
