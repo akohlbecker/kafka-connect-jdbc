@@ -12,6 +12,33 @@ for guidance on this process.
 
 You can build kafka-connect-jdbc with Maven using the standard lifecycle phases.
 
+# Running the FilemakerDialect integration tests
+
+There is no way to use FileMaker Server for testing without purchasing a license or applying for a 
+test license at the customer service. So running integration tests which require a these FileMaker Server 
+can not be fully automated.
+
+At current it is required that you have a Filemaker Server to which the tests can connect. 
+This server needs to offer two databases which can be used for the tests.   
+
+Please copy the `src/test/resources/FilemakerJdbcConnect.properties.template` to `src/test/resources/FilemakerJdbcConnect.properties` 
+and configure it accordingly.
+
+In future this will be simplified by making use of a docker image. Running the Filemaker related integration tests this ways requires the docker image `filemakerServer19:latest` being installed locally.
+
+Building the FileMaker Server 19 Docker image:
+
+~~~
+./scripts/make-fm19-docker-image.sh
+~~~
+
+**TODO**: 
+
+* document how to supply the `LicenseCert.fmcert`
+* create two FM test databases in `src/test/resources/filemaker19_dbs/`
+* un-comment `public static final FixedHostPortGenericContainer fmServer = .... ` in `FilemakerDialectIT_FM`
+* adapt the test class to use the server running in the docker image
+
 # FAQ
 
 Refer frequently asked questions on Kafka Connect JDBC here -

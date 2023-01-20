@@ -4,7 +4,10 @@
 # Save a copy of this file named  FilemakerJdbcConnect.properties (will be ignored by git) and 
 # set the jdbc connection parameters as needed
 
-# below property will be used as jdbc:filemaker://my.server.net:2399/FM-DB-NAME?param=1
-host_port_path_params=my.server.net:2399/FM-DB-NAME?param=1
+# host_port_path_params_db_* properties will be used as jdbc:filemaker://my.server.net:2399/FM-DB-NAME?param=1
+#   - db_1 for general tests
+host_port_path_params_db_1=my.server.net:2399/FM-DB-NAME?param=1
+#   - db_2 additional db for database pool tests
+host_port_path_params_db_2=my.server.net:2399/FM-DB-OTHER_NAME?param=1
 user=
 password=

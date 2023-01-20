@@ -2,13 +2,19 @@
   xsi:schemaLocation="http://maven.apache.org/SETTINGS/1.1.0 http://maven.apache.org/xsd/settings-1.1.0.xsd">
   <servers>
     <server>
-      <id>gitlab-maven</id>
+      <id>gitlab_zkm</id>
       <configuration>
         <httpHeaders>
           <property>
             <name>Job-Token</name>
-			<!-- needs to be set in settings / ci_cd / variables -->
-            <value>${CI_JOB_TOKEN}</value>
+			<!-- 
+			    When a pipeline job is about to run, GitLab generates a unique token 
+			    and injects it as the CI_JOB_TOKEN predefined variable.
+			    
+			    A token to authenticate with certain API endpoints. 
+			    The token is valid as long as the job is running. 
+			 -->
+            <value>${env.CI_JOB_TOKEN}</value>
           </property>
         </httpHeaders>
       </configuration>
