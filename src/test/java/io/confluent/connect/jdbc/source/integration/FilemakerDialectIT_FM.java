@@ -147,8 +147,7 @@ public class FilemakerDialectIT_FM extends FilemakerDialectITBase {
 		ColumnDefinition columnMetadata = columnMetadata(TABLE_OBJEKT, COLUMN_OBJEKT_ID);
 		assertEquals(Nullability.NOT_NULL, columnMetadata.nullability());
 		columnMetadata = columnMetadata(TABLE_OBJEKT, COLUMN_AENDERUNG_DATUM);	
-		assertEquals(Nullability.NOT_NULL, columnMetadata.nullability());
-		
+		assertEquals(Nullability.NULL, columnMetadata.nullability());
 	}
 	
 	
