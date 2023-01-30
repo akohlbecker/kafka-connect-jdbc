@@ -232,9 +232,10 @@ public class FilemakerDialect extends GenericDatabaseDialect {
 	      final String columnName = rs.getString(4);
 	      final ColumnId columnId = new ColumnId(tableId, columnName, null);
 	      // ----------- fixing jdbc type mapping --------
-	      final int jdbcType = jdbcType(rs);
+	      JdbcTypeMapping jdbcTypeMapping = jdbcTypeMapping(rs);
+	      final int jdbcType = jdbcTypeMapping.jdbcType; 
+	      final String typeName = jdbcTypeMapping.typeName; // originally:  rs.getString(6);
 	      // ----------------------------------------------------------
-	      final String typeName = rs.getString(6);
 	      final int precision = rs.getInt(7);
 	      final int scale = rs.getInt(9);
 	      final String typeClassName = null;
@@ -333,13 +334,20 @@ public class FilemakerDialect extends GenericDatabaseDialect {
 	    } else if (rsMetadata.isDefinitelyWritable(column)) {
 	      mutability = Mutability.WRITABLE;
 	    }
+	    JdbcTypeMapping jdbcTypeMapping = jdbcTypeMapping(
+	    		rsMetadata.getColumnType(column), 
+	    		rsMetadata.getColumnClassName(column), 
+	    		rsMetadata.getColumnTypeName(column), 
+	    		rsMetadata.getScale(column), 
+	    		rsMetadata.getPrecision(column)
+	    		);
 	    return new ColumnDefinition(
 	        id,
 	        // ----------- fixing jdbc type mapping --------
-	        jdbcType(rsMetadata.getColumnType(column), rsMetadata.getScale(column), rsMetadata.getPrecision(column)),
+	        jdbcTypeMapping.jdbcType,
+	        jdbcTypeMapping.typeName, // rsMetadata.getColumnTypeName(column),
+	        jdbcTypeMapping.classNameForType, // rsMetadata.getColumnClassName(column),
 	        // ---------------------------------------------
-	        rsMetadata.getColumnTypeName(column),
-	        rsMetadata.getColumnClassName(column),
 	        nullability,
 	        mutability,
 	        rsMetadata.getPrecision(column),
@@ -359,29 +367,32 @@ public class FilemakerDialect extends GenericDatabaseDialect {
 	 * 
 	 * see https://git.zkm.de/data-infrastructure/kafka-connect-jdbc-filemaker/-/issues/1/
 	 */
-	private int jdbcType(ResultSet rs) throws SQLException {
-		
+	private JdbcTypeMapping jdbcTypeMapping(ResultSet rs) throws SQLException {
+			
 		// field id calculated as from 0-based index + 1 for 1 based column index:
-		final int FIELD_DATA_TYPE = 4 + 1;      // type	4 = INT	
-		final int FIELD_TYPE_NAME = 5 + 1;      // type	12 = VARCHAR	
-		final int FIELD_DECIMAL_DIGITS = 8 + 1; // type	4 = INT	
-		final int FIELD_NUM_PREC_RADIX = 9 + 1; // type	4 = INT	
-		final int FIELD_SQL_DATA_TYPE = 13 + 1; // type	12 = VARCHAR	
+		final int FIELD_DATA_TYPE = 4 + 1;      
+		final int FIELD_TYPE_NAME = 5 + 1;     
+		final int FIELD_DECIMAL_DIGITS = 8 + 1;
+		final int FIELD_NUM_PREC_RADIX = 9 + 1;
+		final int FIELD_SQL_DATA_TYPE = 13 + 1;	
 
 		int decimalDigits = rs.getInt(FIELD_DECIMAL_DIGITS);
 		int numPrecRadix = rs.getInt(FIELD_NUM_PREC_RADIX);
+		String typeName = rs.getString(FIELD_TYPE_NAME); 
+		String classNameForType = rs.getString(FIELD_SQL_DATA_TYPE); // only number ????
+		
 		logger.trace("FIELD_DATA_TYPE: " + rs.getInt(FIELD_DATA_TYPE) 
-			+ ", FIELD_TYPE_NAME:" + rs.getString(FIELD_TYPE_NAME) 
+			+ ", FIELD_TYPE_NAME:" + typeName
 			+ ", FIELD_DECIMAL_DIGITS: " + decimalDigits
 			+ ", FIELD_NUM_PREC_RADIX: " + numPrecRadix
-			+ ", FIELD_SQL_DATA_TYPE: " + rs.getString(FIELD_SQL_DATA_TYPE)
+			+ ", FIELD_CLASS_NAME_FOR_TYPE: " + classNameForType
 		);
 		int filemakerJdbcType = rs.getInt(5);
 		
-		return jdbcType(filemakerJdbcType, decimalDigits, numPrecRadix);
+		return jdbcTypeMapping(filemakerJdbcType, classNameForType, typeName, decimalDigits, numPrecRadix);
 	}
 
-	protected int jdbcType(int filemakerJdbcType, int decimalDigits, int numPrecRadix) {
+	protected JdbcTypeMapping jdbcTypeMapping(int filemakerJdbcType, String classNameForType, String typeName,  int decimalDigits, int numPrecRadix) {
 		if(filemakerJdbcType == Types.DOUBLE){
 			// need more information for better mapping
 			if(decimalDigits < 0 && numPrecRadix == 10) {
@@ -394,9 +405,23 @@ public class FilemakerDialect extends GenericDatabaseDialect {
 			// it treat as String in 
 			// by this we are avoiding:
 			// org.apache.kafka.connect.errors.DataException: Kafka Connect Date type should not have any time fields set to non-zero values.
-			filemakerJdbcType = Types.NVARCHAR;
+			filemakerJdbcType = Types.VARCHAR;
+			typeName = "varchar";
+			classNameForType = String.class.getName();
 		}
-		return filemakerJdbcType;
+		return new JdbcTypeMapping(filemakerJdbcType, typeName, classNameForType);
+	}
+	
+	class JdbcTypeMapping {
+		int jdbcType;
+		String typeName;
+		String classNameForType;
+		public JdbcTypeMapping(int jdbcType, String typeName, String classNameForType) {
+			this.jdbcType = jdbcType;
+			this.typeName = typeName;
+			this.classNameForType = classNameForType;
+		}
+		
 	}
 
 	

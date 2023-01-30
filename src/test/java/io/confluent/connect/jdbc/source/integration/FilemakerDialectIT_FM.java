@@ -1,10 +1,13 @@
 package io.confluent.connect.jdbc.source.integration;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
 import java.io.IOException;
+import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.sql.Statement;
 import java.sql.Types;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -12,8 +15,10 @@ import java.util.Calendar;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Map.Entry;
 import java.util.Properties;
 import java.util.TimeZone;
+import java.util.stream.Collectors;
 
 import org.junit.Ignore;
 import org.junit.Test;
@@ -31,6 +36,7 @@ import io.confluent.connect.jdbc.source.TimestampIncrementingTableQuerierFactory
 import io.confluent.connect.jdbc.util.ColumnDefinition;
 import io.confluent.connect.jdbc.util.ColumnDefinition.Nullability;
 import io.confluent.connect.jdbc.util.ColumnId;
+import io.confluent.connect.jdbc.util.TableId;
 
 /** 
  * Class name suffix "IT_FM" to put FileMaker tests into another suite which is not run by default.
@@ -108,13 +114,40 @@ public class FilemakerDialectIT_FM extends FilemakerDialectITBase {
 		fmDialect.isConnectionValid(fmDialect.getConnection(), 5);
 	}
 
-	private ColumnDefinition columnMetadata(String tableName, String columnName) throws SQLException {
+	private ColumnDefinition columnMetadataFromTableMetadata(String tableName, String columnName) throws SQLException {
 		Map<ColumnId, ColumnDefinition> columnMetadataMap = fmDialect.describeColumns(fmDialect.getConnection(), tableName, columnName);
 		assertTrue("No column returned, please  check the field name", columnMetadataMap.size() > 0);
 		assertEquals("More than one columns returned, please  check the field name", 1, columnMetadataMap.size());
 		assertEquals("\""+tableName+"\".\""+columnName+"\"", columnMetadataMap.keySet().iterator().next().toString());
 		ColumnDefinition columnMetadata = columnMetadataMap.values().iterator().next();
 		return columnMetadata;
+	}
+
+	
+	private ColumnDefinition columnMetadataFromResultSet(String tableName, String columnName) throws SQLException {
+		ResultSet rs = fetchFistRow(TABLE_OBJEKT);
+		Map<String, ColumnDefinition> columnMetadataMap = fmDialect.describeColumns(rs.getMetaData()).entrySet()
+				.stream()
+				.collect(Collectors.toMap((e) -> e.getKey().toString(), Entry::getValue));
+		assertTrue("No column returned, please  check the field name", columnMetadataMap.size() > 0);
+		String key = "\"\".\""+columnName+"\"";
+		assertTrue(columnMetadataMap.containsKey(key));
+		ColumnDefinition columnMetadata = columnMetadataMap.get(key);
+		return columnMetadata;
+	}
+	
+	private ResultSet fetchFistRow(String tableName) throws SQLException {
+		Statement statement = fmDialect.getConnection().createStatement();
+        statement.execute("SELECT * FROM " + tableName  + " FETCH FIRST 1 ROWS ONLY ");
+	      ResultSet rs = null;
+	      try {
+	        rs = statement.getResultSet();
+	        return rs;
+	      } finally {
+	        if (rs != null) {
+	          rs.close();
+	        }
+	      }
 	}
 
 	/* ***********************************************************************************************
@@ -139,31 +172,50 @@ public class FilemakerDialectIT_FM extends FilemakerDialectITBase {
 	private static final String COLUMN_ROWID = "ROWID";
 	private static final String COLUMN_AENDERUNG_DATUM = "Aenderung_Datum";
 	private static final String COLUMN_ERSTELLUNG_DATUM = "Erstellung_Datum";
+	private static final String OBJEKT_SIGNATUR_ARCHIV = "Objekt_Signatur_Archiv";
 	
 
 	private static final long POLLING_INTERVAL_MS = 500;
 
 	
 	@Test
-	public void testDescribeColumns_nullability() throws Exception {
+	public void testDescribeColumns_fromTableMetadata_nullability() throws Exception {
 		
-		ColumnDefinition columnMetadata = columnMetadata(TABLE_OBJEKT, COLUMN_OBJEKT_ID);
+		ColumnDefinition columnMetadata = columnMetadataFromTableMetadata(TABLE_OBJEKT, COLUMN_OBJEKT_ID);
 		assertEquals(Nullability.NOT_NULL, columnMetadata.nullability());
-		columnMetadata = columnMetadata(TABLE_OBJEKT, COLUMN_AENDERUNG_DATUM);	
+		columnMetadata = columnMetadataFromTableMetadata(TABLE_OBJEKT, COLUMN_AENDERUNG_DATUM);	
 		assertEquals(Nullability.NULL, columnMetadata.nullability());
 	}
 	
 	@Test
-	public void testDescribeColumns_type_timestamp() throws Exception {
-		ColumnDefinition columnMetadata = columnMetadata(TABLE_OBJEKT, COLUMN_AENDERUNG_DATUM);	
+	public void testDescribeColumns_fromTableMetadata_type_timestamp() throws Exception {
+		ColumnDefinition columnMetadata = columnMetadataFromTableMetadata(TABLE_OBJEKT, COLUMN_AENDERUNG_DATUM);	
 		assertEquals(Types.TIMESTAMP, columnMetadata.type());
 	}
 	
 	
 	@Test
-	public void testDescribeColumns_type_date() throws Exception {
-		ColumnDefinition columnMetadata = columnMetadata(TABLE_OBJEKT, COLUMN_ERSTELLUNG_DATUM);
-		assertEquals(Types.NVARCHAR, columnMetadata.type());
+	public void testDescribeColumns_fromTableMetadata_type_date() throws Exception {
+		ColumnDefinition columnMetadata = columnMetadataFromTableMetadata(TABLE_OBJEKT, COLUMN_ERSTELLUNG_DATUM);
+		assertEquals(Types.VARCHAR, columnMetadata.type());
+		assertEquals("varchar", columnMetadata.typeName());
+		assertNull(columnMetadata.classNameForType());
+	}
+	
+	@Test
+	public void testDescribeColumns_fromResultSet_type_date() throws Exception {
+		ColumnDefinition columnMetadata = columnMetadataFromResultSet(TABLE_OBJEKT, COLUMN_ERSTELLUNG_DATUM);
+		assertEquals(Types.VARCHAR, columnMetadata.type());
+		assertEquals("varchar", columnMetadata.typeName());
+		assertEquals("java.lang.String", columnMetadata.classNameForType());
+	}
+	
+	@Test
+	public void testDescribeColumns_fromResultSet_type_text() throws Exception {
+		ColumnDefinition columnMetadata = columnMetadataFromResultSet(TABLE_OBJEKT, OBJEKT_SIGNATUR_ARCHIV);
+		assertEquals(Types.VARCHAR, columnMetadata.type());
+		assertEquals("varchar", columnMetadata.typeName());
+		assertEquals("java.lang.String", columnMetadata.classNameForType());
 	}
 	
 //	@Test
@@ -177,14 +229,14 @@ public class FilemakerDialectIT_FM extends FilemakerDialectITBase {
 	@Ignore
 	public void testDescribeColumns_autoincrement() throws Exception {
 		
-		ColumnDefinition columnMetadata = columnMetadata(TABLE_OBJEKT, COLUMN_OBJEKT_ID);	
+		ColumnDefinition columnMetadata = columnMetadataFromTableMetadata(TABLE_OBJEKT, COLUMN_OBJEKT_ID);	
 		assertTrue(columnMetadata.isAutoIncrement());
 	}
 	
 	@Test
 	public void testDescribeColumns_constraint_unique() throws Exception {
 		
-		ColumnDefinition columnMetadata = columnMetadata(TABLE_OBJEKT, COLUMN_OBJEKT_ID);	
+		ColumnDefinition columnMetadata = columnMetadataFromTableMetadata(TABLE_OBJEKT, COLUMN_OBJEKT_ID);	
 		// assertTrue(columnMetadata.isAutoIncrement());
 	}
 	
