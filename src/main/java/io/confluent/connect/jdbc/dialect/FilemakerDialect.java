@@ -295,6 +295,66 @@ public class FilemakerDialect extends GenericDatabaseDialect {
 	    return results;
 	  }
 	}
+	
+	  /**
+	   * Create a definition for the specified column in the result set.
+	   *
+	   * @param rsMetadata the result set metadata; may not be null
+	   * @param column     the column number, starting at 1 for the first column
+	   * @return the column definition; never null
+	   * @throws SQLException if there is an error accessing the result set metadata
+	   */
+	@Override
+	  protected ColumnDefinition describeColumn(
+	      ResultSetMetaData rsMetadata,
+	      int column
+	  ) throws SQLException {
+	    String catalog = rsMetadata.getCatalogName(column);
+	    String schema = rsMetadata.getSchemaName(column);
+	    String tableName = rsMetadata.getTableName(column);
+	    TableId tableId = new TableId(catalog, schema, tableName);
+	    String name = rsMetadata.getColumnName(column);
+	    String alias = rsMetadata.getColumnLabel(column);
+	    ColumnId id = new ColumnId(tableId, name, alias);
+	    Nullability nullability;
+	    switch (rsMetadata.isNullable(column)) {
+	      case ResultSetMetaData.columnNullable:
+	        nullability = Nullability.NULL;
+	        break;
+	      case ResultSetMetaData.columnNoNulls:
+	        nullability = Nullability.NOT_NULL;
+	        break;
+	      case ResultSetMetaData.columnNullableUnknown:
+	      default:
+	        nullability = Nullability.UNKNOWN;
+	        break;
+	    }
+	    Mutability mutability = Mutability.MAYBE_WRITABLE;
+	    if (rsMetadata.isReadOnly(column)) {
+	      mutability = Mutability.READ_ONLY;
+	    } else if (rsMetadata.isWritable(column)) {
+	      mutability = Mutability.MAYBE_WRITABLE;
+	    } else if (rsMetadata.isDefinitelyWritable(column)) {
+	      mutability = Mutability.WRITABLE;
+	    }
+	    return new ColumnDefinition(
+	        id,
+	        jdbcType(rsMetadata.getColumnType(column), rsMetadata.getScale(column), rsMetadata.getPrecision(column)),
+	        rsMetadata.getColumnTypeName(column),
+	        rsMetadata.getColumnClassName(column),
+	        nullability,
+	        mutability,
+	        rsMetadata.getPrecision(column),
+	        rsMetadata.getScale(column),
+	        rsMetadata.isSigned(column),
+	        rsMetadata.getColumnDisplaySize(column),
+	        rsMetadata.isAutoIncrement(column),
+	        rsMetadata.isCaseSensitive(column),
+	        rsMetadata.isSearchable(column),
+	        rsMetadata.isCurrency(column),
+	        false
+	    );
+	  }
 
 	/**
 	 * Provides better mapping of filemaker types to Jdbc Types
@@ -310,16 +370,23 @@ public class FilemakerDialect extends GenericDatabaseDialect {
 		final int FIELD_NUM_PREC_RADIX = 9 + 1; // type	4 = INT	
 		final int FIELD_SQL_DATA_TYPE = 13 + 1; // type	12 = VARCHAR	
 
+		int decimalDigits = rs.getInt(FIELD_DECIMAL_DIGITS);
+		int numPrecRadix = rs.getInt(FIELD_NUM_PREC_RADIX);
 		logger.trace("FIELD_DATA_TYPE: " + rs.getInt(FIELD_DATA_TYPE) 
 			+ ", FIELD_TYPE_NAME:" + rs.getString(FIELD_TYPE_NAME) 
-			+ ", FIELD_DECIMAL_DIGITS: " + rs.getInt(FIELD_DECIMAL_DIGITS)
-			+ ", FIELD_NUM_PREC_RADIX: " + rs.getInt(FIELD_NUM_PREC_RADIX)
+			+ ", FIELD_DECIMAL_DIGITS: " + decimalDigits
+			+ ", FIELD_NUM_PREC_RADIX: " + numPrecRadix
 			+ ", FIELD_SQL_DATA_TYPE: " + rs.getString(FIELD_SQL_DATA_TYPE)
 		);
 		int filemakerJdbcType = rs.getInt(5);
+		
+		return jdbcType(filemakerJdbcType, decimalDigits, numPrecRadix);
+	}
+
+	protected int jdbcType(int filemakerJdbcType, int decimalDigits, int numPrecRadix) {
 		if(filemakerJdbcType == Types.DOUBLE){
 			// need more information for better mapping
-			if(rs.getInt(FIELD_DECIMAL_DIGITS) < 0 && rs.getInt(FIELD_NUM_PREC_RADIX) == 10) {
+			if(decimalDigits < 0 && numPrecRadix == 10) {
 				filemakerJdbcType = Types.INTEGER;
 			}
 		}
