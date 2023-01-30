@@ -296,14 +296,10 @@ public class FilemakerDialect extends GenericDatabaseDialect {
 	  }
 	}
 	
-	  /**
-	   * Create a definition for the specified column in the result set.
-	   *
-	   * @param rsMetadata the result set metadata; may not be null
-	   * @param column     the column number, starting at 1 for the first column
-	   * @return the column definition; never null
-	   * @throws SQLException if there is an error accessing the result set metadata
-	   */
+	/**
+	 * Clone of the super class method in {@link GenericDatabaseDialect#describeColumnsByQuerying(Connection, TableId)}
+	 * Modified code parts are commented.
+	 */
 	@Override
 	  protected ColumnDefinition describeColumn(
 	      ResultSetMetaData rsMetadata,
@@ -339,7 +335,9 @@ public class FilemakerDialect extends GenericDatabaseDialect {
 	    }
 	    return new ColumnDefinition(
 	        id,
+	        // ----------- fixing jdbc type mapping --------
 	        jdbcType(rsMetadata.getColumnType(column), rsMetadata.getScale(column), rsMetadata.getPrecision(column)),
+	        // ---------------------------------------------
 	        rsMetadata.getColumnTypeName(column),
 	        rsMetadata.getColumnClassName(column),
 	        nullability,
