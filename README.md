@@ -22,7 +22,7 @@ There is no way to use FileMaker Server for testing without purchasing a license
 test license at the customer service. So running integration tests which require a these FileMaker Server 
 can not be fully automated.
 
-At current it is required that you have a Filemaker Server to which the tests can connect. 
+At current it is required to provide a Filemaker server for tests to connect to. 
 This server needs to offer two databases which can be used for the tests.   
 
 Please copy the `src/test/resources/FilemakerJdbcConnect.properties.template` to `src/test/resources/FilemakerJdbcConnect.properties` 
