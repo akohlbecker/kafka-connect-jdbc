@@ -368,7 +368,7 @@ public class FilemakerDialect extends GenericDatabaseDialect {
 	 * see
 	 * <ul>
 	 * <li>https://git.zkm.de/data-infrastructure/kafka-connect-jdbc-filemaker/-/issues/1/</li>
-	 * <li>https://git.zkm.de/data-infrastructure/kafka-connect-jdbc-filemaker/-/issues/3/</li>
+	 * <li>https://git.zkm.de/data-infrastructure/kafka-connect-jdbc/-/issues/3</li>
 	 * </ul>
 	 */
 	private JdbcTypeMapping jdbcTypeMapping(ResultSet rs) throws SQLException {
