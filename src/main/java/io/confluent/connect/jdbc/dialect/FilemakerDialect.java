@@ -401,7 +401,7 @@ public class FilemakerDialect extends GenericDatabaseDialect {
 		}
 		if(filemakerJdbcType == Types.DATE){
 			// SQL DATE type would be mapped my kafka-connect to the connect Date type which requires time fields
-			// As Filemaker Date is purely date information we need to map it to NVARCHAR in order to let 
+			// As Filemaker Date is purely date information we need to map it to VARCHAR in order to let 
 			// it treat as String in 
 			// by this we are avoiding:
 			// org.apache.kafka.connect.errors.DataException: Kafka Connect Date type should not have any time fields set to non-zero values.
