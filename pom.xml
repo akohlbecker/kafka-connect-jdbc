@@ -83,6 +83,12 @@
 	</repositories>
 	
 	<distributionManagement>
+	  <!-- 
+	     Requires API token to be present in ~/.m2/settings.xml
+	     for gitlab the ./ci_settings.xml is needed
+	     see README.md for further details 
+	     https://docs.gitlab.com/ee/user/packages/maven_repository/index.html#create-maven-packages-with-gitlab-cicd  
+	   --> 
 	  <repository>
 	    <!-- https://git.zkm.de/data-infrastructure/kafka-connect-jdbc/-/packages -->
 	    <id>gitlab_zkm</id>

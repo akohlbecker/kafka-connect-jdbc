@@ -36,6 +36,37 @@ Building the FileMaker Server 19 Docker image:
 ./scripts/make-fm19-docker-image.sh
 ~~~
 
+### Build and delpoy
+
+For depolyment to the ZKM maven repository and API token needs to be present 
+For local delpoyment add the API token to ~/.m2/settings.xml
+
+~~~
+<settings>
+  <servers>
+    <server>
+      <id>gitlab_zkm</id>
+      <configuration>
+        <httpHeaders>
+          <property>
+            <name>Private-Token</name><!-- do not change -->
+            <value>******************</value>
+          </property>
+        </httpHeaders>
+      </configuration>
+    </server>
+  </servers>
+</settings>
+~~~
+
+For delpoyment in gitlab the `./ci_settings.xml` is needed for further details please refer to [gitlab create-maven-packages-with-gitlab-cicd](https://docs.gitlab.com/ee/user/packages/maven_repository/index.html#create-maven-packages-with-gitlab-cicd)
+
+maven command for delpoyment from locally:
+
+~~~
+mvn clean deploy -DskipTests -Dcheckstyle.skip=true 
+~~~
+
 **TODO**: 
 
 * document how to supply the `LicenseCert.fmcert`
