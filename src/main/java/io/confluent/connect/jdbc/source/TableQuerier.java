@@ -57,6 +57,8 @@ abstract class TableQuerier implements Comparable<TableQuerier> {
   protected SchemaMapping schemaMapping;
   private String loggedQueryString;
 
+  private int attemptedRetries;
+
   public TableQuerier(
       DatabaseDialect dialect,
       QueryMode mode,
@@ -71,6 +73,7 @@ abstract class TableQuerier implements Comparable<TableQuerier> {
     this.topicPrefix = topicPrefix;
     this.lastUpdate = 0;
     this.suffix = suffix;
+    this.attemptedRetries = 0;
   }
 
   public long getLastUpdate() {
@@ -98,7 +101,10 @@ abstract class TableQuerier implements Comparable<TableQuerier> {
       resultSet = executeQuery();
       String schemaName = tableId != null ? tableId.tableName() : null; // backwards compatible
       schemaMapping = SchemaMapping.create(schemaName, resultSet.getMetaData(), dialect);
+    } else {
+      log.trace("Current ResultSet {} isn't null. Continuing to seek.", resultSet.hashCode());
     }
+    log.trace("Prepared statement created.");
   }
 
   protected abstract ResultSet executeQuery() throws SQLException;
@@ -119,12 +125,24 @@ abstract class TableQuerier implements Comparable<TableQuerier> {
     lastUpdate = now;
   }
 
+  public int getAttemptedRetryCount() {
+    return attemptedRetries;
+  }
+
+  public void incrementRetryCount() {
+    attemptedRetries++;
+  }
+
+  public void resetRetryCount() {
+    attemptedRetries = 0;
+  }
+
   private void releaseLocksQuietly() {
     if (db != null) {
       try {
         db.commit();
       } catch (SQLException e) {
-        log.warn("Error while committing read transaction, database locks may still be held", e);
+        log.warn("Error while committing read transaction", e);
       }
     }
     db = null;

@@ -15,15 +15,19 @@
 
 package io.confluent.connect.jdbc.dialect;
 
+import io.confluent.connect.jdbc.sink.JdbcSinkConfig;
 import org.apache.kafka.common.config.AbstractConfig;
 import org.apache.kafka.connect.data.Date;
 import org.apache.kafka.connect.data.Decimal;
+import org.apache.kafka.connect.data.Schema;
+import org.apache.kafka.connect.data.Schema.Type;
 import org.apache.kafka.connect.data.SchemaBuilder;
 import org.apache.kafka.connect.data.Time;
 import org.apache.kafka.connect.data.Timestamp;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.ResultSetMetaData;
 import java.sql.SQLException;
@@ -37,6 +41,11 @@ import java.util.List;
 import java.util.TimeZone;
 
 import io.confluent.connect.jdbc.dialect.DatabaseDialectProvider.SubprotocolBasedProvider;
+import io.confluent.connect.jdbc.sink.JdbcSinkConfig.InsertMode;
+import io.confluent.connect.jdbc.sink.JdbcSinkConfig.PrimaryKeyMode;
+import io.confluent.connect.jdbc.sink.PreparedStatementBinder;
+import io.confluent.connect.jdbc.sink.metadata.FieldsMetadata;
+import io.confluent.connect.jdbc.sink.metadata.SchemaPair;
 import io.confluent.connect.jdbc.sink.metadata.SinkRecordField;
 import io.confluent.connect.jdbc.source.ColumnMapping;
 import io.confluent.connect.jdbc.util.ColumnDefinition;
@@ -44,6 +53,7 @@ import io.confluent.connect.jdbc.util.ColumnId;
 import io.confluent.connect.jdbc.util.DateTimeUtils;
 import io.confluent.connect.jdbc.util.ExpressionBuilder;
 import io.confluent.connect.jdbc.util.IdentifierRules;
+import io.confluent.connect.jdbc.util.TableDefinition;
 import io.confluent.connect.jdbc.util.TableId;
 import io.confluent.connect.jdbc.util.ColumnDefinition.Mutability;
 import io.confluent.connect.jdbc.util.ColumnDefinition.Nullability;
@@ -115,6 +125,76 @@ public class SqlServerDatabaseDialect extends GenericDatabaseDialect {
       return new TableId(tableId.catalogName(), "dbo", tableId.tableName());
     }
     return tableId;
+  }
+
+  @Override
+  public StatementBinder statementBinder(
+      PreparedStatement statement,
+      PrimaryKeyMode pkMode,
+      SchemaPair schemaPair,
+      FieldsMetadata fieldsMetadata,
+      TableDefinition tableDefinition,
+      InsertMode insertMode
+  ) {
+    return new PreparedStatementBinder(
+        this,
+        statement,
+        pkMode,
+        schemaPair,
+        fieldsMetadata,
+        tableDefinition,
+        insertMode
+    );
+  }
+
+  @Override
+  public void bindField(
+      PreparedStatement statement,
+      int index,
+      Schema schema,
+      Object value,
+      ColumnDefinition colDef
+  ) throws SQLException {
+    if (value == null) {
+      Integer type = getSqlTypeForSchema(schema);
+      if (type != null) {
+        statement.setNull(index, type);
+      } else {
+        statement.setObject(index, null);
+      }
+    } else {
+      boolean bound = maybeBindLogical(statement, index, schema, value);
+      if (!bound) {
+        bound = maybeBindPrimitive(statement, index, schema, value, colDef);
+      }
+      if (!bound) {
+        throw new ConnectException("Unsupported source data type: " + schema.type());
+      }
+    }
+  }
+
+  protected boolean maybeBindPrimitive(
+      PreparedStatement statement,
+      int index,
+      Schema schema,
+      Object value,
+      ColumnDefinition colDef
+  ) throws SQLException {
+    if (colDef == null) {
+      return super.maybeBindPrimitive(statement, index, schema, value);
+    }
+
+    if (schema.type() == Type.STRING) {
+      if (colDef.type() == Types.LONGNVARCHAR
+          || colDef.type() == Types.NVARCHAR || colDef.type() == Types.NCHAR) {
+        statement.setNString(index, (String) value);
+        return true;
+      } else {
+        return super.maybeBindPrimitive(statement, index, schema, value);
+      }
+    }
+
+    return super.maybeBindPrimitive(statement, index, schema, value);
   }
 
   /**
@@ -237,6 +317,11 @@ public class SqlServerDatabaseDialect extends GenericDatabaseDialect {
   }
 
   @Override
+  protected Integer getSqlTypeForSchema(Schema schema) {
+    return schema.type() == Schema.Type.BYTES ? Types.VARBINARY : null;
+  }
+
+  @Override
   protected String getSqlType(SinkRecordField field) {
     if (field.schemaName() != null) {
       switch (field.schemaName()) {
@@ -324,7 +409,10 @@ public class SqlServerDatabaseDialect extends GenericDatabaseDialect {
     ExpressionBuilder builder = expressionBuilder();
     builder.append("merge into ");
     builder.append(table);
-    builder.append(" with (HOLDLOCK) AS target using (select ");
+    if (((JdbcSinkConfig) this.config).useHoldlockInMerge) {
+      builder.append(" with (HOLDLOCK)");
+    }
+    builder.append(" AS target using (select ");
     builder.appendList()
            .delimitedBy(", ")
            .transformedBy(ExpressionBuilder.columnNamesWithPrefix("? AS "))

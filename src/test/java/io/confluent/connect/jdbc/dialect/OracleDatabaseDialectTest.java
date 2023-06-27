@@ -39,6 +39,8 @@ import org.junit.Test;
 import io.confluent.connect.jdbc.util.QuoteMethod;
 import io.confluent.connect.jdbc.util.TableId;
 
+import oracle.jdbc.OraclePreparedStatement;
+
 import static org.junit.Assert.assertEquals;
 import static org.mockito.Matchers.any;
 import static org.mockito.Matchers.eq;
@@ -58,7 +60,8 @@ public class OracleDatabaseDialectTest extends BaseDialectTest<OracleDatabaseDia
   @Test
   public void bindFieldStringValue() throws SQLException {
     int index = ThreadLocalRandom.current().nextInt();
-    verifyBindField(++index, Schema.STRING_SCHEMA, "yep").setCharacterStream(eq(index), any(StringReader.class));
+    String value = "yep";
+    verifyBindField(++index, Schema.STRING_SCHEMA, value).setCharacterStream(eq(index), any(StringReader.class), eq((long)value.length()));
   }
 
   @Override
@@ -79,7 +82,7 @@ public class OracleDatabaseDialectTest extends BaseDialectTest<OracleDatabaseDia
     assertPrimitiveMapping(Type.FLOAT64, "BINARY_DOUBLE");
     assertPrimitiveMapping(Type.BOOLEAN, "NUMBER(1,0)");
     assertPrimitiveMapping(Type.BYTES, "BLOB");
-    assertPrimitiveMapping(Type.STRING, "CLOB");
+    assertPrimitiveMapping(Type.STRING, "VARCHAR2(4000)");
   }
 
   @Test
@@ -99,7 +102,7 @@ public class OracleDatabaseDialectTest extends BaseDialectTest<OracleDatabaseDia
     verifyDataTypeMapping("BINARY_FLOAT", Schema.FLOAT32_SCHEMA);
     verifyDataTypeMapping("BINARY_DOUBLE", Schema.FLOAT64_SCHEMA);
     verifyDataTypeMapping("NUMBER(1,0)", Schema.BOOLEAN_SCHEMA);
-    verifyDataTypeMapping("CLOB", Schema.STRING_SCHEMA);
+    verifyDataTypeMapping("VARCHAR2(4000)", Schema.STRING_SCHEMA);
     verifyDataTypeMapping("BLOB", Schema.BYTES_SCHEMA);
     verifyDataTypeMapping("NUMBER(*,0)", Decimal.schema(0));
     verifyDataTypeMapping("NUMBER(*,42)", Decimal.schema(42));
@@ -126,8 +129,8 @@ public class OracleDatabaseDialectTest extends BaseDialectTest<OracleDatabaseDia
   @Test
   public void shouldBuildCreateQueryStatement() {
     String expected = "CREATE TABLE \"myTable\" (\n" + "\"c1\" NUMBER(10,0) NOT NULL,\n" +
-                      "\"c2\" NUMBER(19,0) NOT NULL,\n" + "\"c3\" CLOB NOT NULL,\n" +
-                      "\"c4\" CLOB NULL,\n" + "\"c5\" DATE DEFAULT '2001-03-15',\n" +
+                      "\"c2\" NUMBER(19,0) NOT NULL,\n" + "\"c3\" VARCHAR2(4000) NOT NULL,\n" +
+                      "\"c4\" VARCHAR2(4000) NULL,\n" + "\"c5\" DATE DEFAULT '2001-03-15',\n" +
                       "\"c6\" DATE DEFAULT '00:00:00.000',\n" +
                       "\"c7\" TIMESTAMP DEFAULT '2001-03-15 00:00:00.000',\n" +
                       "\"c8\" NUMBER(*,4) NULL,\n" +
@@ -144,8 +147,8 @@ public class OracleDatabaseDialectTest extends BaseDialectTest<OracleDatabaseDia
             "ALTER TABLE \"myTable\" ADD(\n" +
             "\"c1\" NUMBER(10,0) NOT NULL,\n" +
             "\"c2\" NUMBER(19,0) NOT NULL,\n" +
-            "\"c3\" CLOB NOT NULL,\n" +
-            "\"c4\" CLOB NULL,\n" +
+            "\"c3\" VARCHAR2(4000) NOT NULL,\n" +
+            "\"c4\" VARCHAR2(4000) NULL,\n" +
             "\"c5\" DATE DEFAULT '2001-03-15',\n" +
             "\"c6\" DATE DEFAULT '00:00:00.000',\n" +
             "\"c7\" TIMESTAMP DEFAULT '2001-03-15 00:00:00.000',\n" +
@@ -163,8 +166,8 @@ public class OracleDatabaseDialectTest extends BaseDialectTest<OracleDatabaseDia
             "ALTER TABLE myTable ADD(\n" +
             "c1 NUMBER(10,0) NOT NULL,\n" +
             "c2 NUMBER(19,0) NOT NULL,\n" +
-            "c3 CLOB NOT NULL,\n" +
-            "c4 CLOB NULL,\n" +
+            "c3 VARCHAR2(4000) NOT NULL,\n" +
+            "c4 VARCHAR2(4000) NULL,\n" +
             "c5 DATE DEFAULT '2001-03-15',\n" +
             "c6 DATE DEFAULT '00:00:00.000',\n" +
             "c7 TIMESTAMP DEFAULT '2001-03-15 00:00:00.000',\n" +
@@ -344,7 +347,7 @@ public class OracleDatabaseDialectTest extends BaseDialectTest<OracleDatabaseDia
     verify(stmtNvarchar, times(1)).setNString(index, value);
 
     dialect.bindField(stmtClob, index, schema, value, colDefClob);
-    verify(stmtClob, times(1)).setCharacterStream(eq(index), any(StringReader.class));
+    verify(stmtClob, times(1)).setCharacterStream(eq(index), any(StringReader.class), eq((long) value.length()));
   }
 
   @Test
@@ -362,5 +365,111 @@ public class OracleDatabaseDialectTest extends BaseDialectTest<OracleDatabaseDia
     verify(statement, times(1)).setBlob(eq(index), any(ByteArrayInputStream.class));
     dialect.bindField(statement, index, schema, value, colDefBinary);
     verify(statement, times(1)).setBytes(index, value);
+  }
+
+  @Override
+  @Test
+  public void bindFieldPrimitiveValuesExceptByteAndStringAndBytes() throws SQLException {
+    int index = ThreadLocalRandom.current().nextInt();
+    verifyBindField(++index, Schema.INT16_SCHEMA, (short) 42).setShort(index, (short) 42);
+    verifyBindField(++index, Schema.INT32_SCHEMA, 42).setInt(index, 42);
+    verifyBindField(++index, Schema.INT64_SCHEMA, 42L).setLong(index, 42L);
+    verifyBindField(++index, Schema.BOOLEAN_SCHEMA, false).setBoolean(index, false);
+    verifyBindField(++index, Schema.BOOLEAN_SCHEMA, true).setBoolean(index, true);
+    verifyBindField(++index, Schema.FLOAT32_SCHEMA, -42f).setBinaryFloat(index, -42f);
+    verifyBindField(++index, Schema.FLOAT64_SCHEMA, 42d).setBinaryDouble(index, 42d);
+
+    verifyBindField(
+            ++index,
+            Decimal.schema(0),
+            new BigDecimal("1.5").setScale(0, BigDecimal.ROUND_HALF_EVEN)
+    ).setBigDecimal(index, new BigDecimal(2));
+    Calendar utcCalendar = DateTimeUtils.getTimeZoneCalendar(TimeZone.getTimeZone(ZoneOffset.UTC));
+    verifyBindField(
+            ++index,
+            Date.SCHEMA,
+            new java.util.Date(0)
+    ).setDate(index, new java.sql.Date(0), utcCalendar);
+    verifyBindField(
+            ++index,
+            Time.SCHEMA,
+            new java.util.Date(1000)
+    ).setTime(index, new java.sql.Time(1000), utcCalendar);
+    verifyBindField(
+            ++index,
+            Timestamp.SCHEMA,
+            new java.util.Date(100)
+    ).setTimestamp(index, new java.sql.Timestamp(100), utcCalendar);
+  }
+
+  @Override
+  protected OraclePreparedStatement verifyBindField(int index, Schema schema, Object value)
+          throws SQLException {
+    OraclePreparedStatement statement = mock(OraclePreparedStatement.class);
+    ColumnDefinition colDef = mock(ColumnDefinition.class);
+    if (schema.name() != null) {
+      switch (schema.name()) {
+        case Decimal.LOGICAL_NAME:
+          when(colDef.type()).thenReturn(Types.NUMERIC);
+          break;
+        case Date.LOGICAL_NAME:
+        case Time.LOGICAL_NAME:
+          when(colDef.type()).thenReturn(Types.DATE);
+          break;
+        case Timestamp.LOGICAL_NAME:
+          when(colDef.type()).thenReturn(Types.TIMESTAMP);
+          break;
+        default:
+          when(colDef.type()).thenThrow(
+                  new UnsupportedOperationException(
+                          String.format(
+                                  "%s: '%s' is not a supported schema name",
+                                  this.getClass().getSimpleName(),
+                                  schema.name()
+                          )
+                  )
+          );
+      }
+    } else {
+      switch (schema.type()) {
+        case INT8:
+        case INT16:
+        case INT32:
+        case INT64:
+        case BOOLEAN:
+          when(colDef.type()).thenReturn(Types.NUMERIC);
+          break;
+        case FLOAT32:
+          // BINARY_FLOAT = 100
+          when(colDef.type()).thenReturn(100);
+          break;
+        case FLOAT64:
+          // BINARY_DOUBLE = 101
+          when(colDef.type()).thenReturn(101);
+          break;
+        case STRING:
+          when(colDef.type()).thenReturn(Types.CLOB);
+          break;
+        case BYTES:
+          when(colDef.type()).thenReturn(Types.BLOB);
+          break;
+        case ARRAY:
+          when(colDef.type()).thenReturn(Types.ARRAY);
+          break;
+        default:
+          when(colDef.type()).thenThrow(
+                  new UnsupportedOperationException(
+                          String.format(
+                                  "%s: '%s' is not a supported schema type",
+                                  this.getClass().getSimpleName(),
+                                  schema.type()
+                          )
+                  )
+          );
+      }
+    }
+
+    dialect.bindField(statement, index, schema, value, colDef);
+    return verify(statement, times(1));
   }
 }

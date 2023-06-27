@@ -64,6 +64,19 @@ public class JdbcSinkConfigTest {
   }
 
   @Test
+  public void shouldCreateConfigWithHoldlock() {
+    createConfig();
+    assertEquals(true, config.useHoldlockInMerge);
+  }
+
+  @Test
+  public void shouldCreateConfigWithNoHoldlock() {
+    props.put("mssql.use.merge.holdlock", "false");
+    createConfig();
+    assertEquals(false, config.useHoldlockInMerge);
+  }
+
+  @Test
   public void shouldCreateConfigWithAdditionalConfigs() {
     props.put("auto.create", "true");
     props.put("pk.mode", "kafka");
@@ -84,6 +97,13 @@ public class JdbcSinkConfigTest {
     props.put("table.types", "table");
     createConfig();
     assertTableTypes(TableType.TABLE);
+  }
+
+  @Test
+  public void shouldCreateConfigWithPartitionedTableOnly() {
+    props.put("table.types", "partitioned table");
+    createConfig();
+    assertTableTypes(TableType.PARTITIONED_TABLE);
   }
 
   @Test

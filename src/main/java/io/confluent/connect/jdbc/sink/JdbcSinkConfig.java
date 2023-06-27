@@ -215,6 +215,7 @@ public class JdbcSinkConfig extends AbstractConfig {
   private static final String WRITES_GROUP = "Writes";
   private static final String DATAMAPPING_GROUP = "Data Mapping";
   private static final String DDL_GROUP = "DDL Support";
+  private static final String DML_GROUP = "DML Support";
   private static final String RETRIES_GROUP = "Retries";
 
   public static final String DIALECT_NAME_CONFIG = "dialect.name";
@@ -249,16 +250,26 @@ public class JdbcSinkConfig extends AbstractConfig {
   private static final String TABLE_TYPES_DOC =
       "The comma-separated types of database tables to which the sink connector can write. "
       + "By default this is ``" + TableType.TABLE + "``, but any combination of ``"
-      + TableType.TABLE + "`` and ``" + TableType.VIEW + "`` is allowed. Not all databases "
-      + "support writing to views, and when they do the the sink connector will fail if the "
+      + TableType.TABLE + "``, ``" + TableType.PARTITIONED_TABLE + "`` and ``"
+      + TableType.VIEW + "`` is allowed. Not all databases support writing to views, "
+      + "and when they do the sink connector will fail if the "
       + "view definition does not match the records' schemas (regardless of ``"
       + AUTO_EVOLVE + "``).";
 
+  public static final String TRIM_SENSITIVE_LOG_ENABLED = "trim.sensitive.log";
+  private static final String TRIM_SENSITIVE_LOG_ENABLED_DEFAULT = "false";
   private static final EnumRecommender QUOTE_METHOD_RECOMMENDER =
       EnumRecommender.in(QuoteMethod.values());
 
   private static final EnumRecommender TABLE_TYPES_RECOMMENDER =
       EnumRecommender.in(TableType.values());
+  public static final String MSSQL_USE_MERGE_HOLDLOCK = "mssql.use.merge.holdlock";
+  private static final String MSSQL_USE_MERGE_HOLDLOCK_DEFAULT = "true";
+  private static final String MSSQL_USE_MERGE_HOLDLOCK_DOC =
+      "Whether to use HOLDLOCK when performing a MERGE INTO upsert statement. "
+      + "Note that it is only applicable to SQL Server.";
+  private static final String MSSQL_USE_MERGE_HOLDLOCK_DISPLAY =
+      "SQL Server - Use HOLDLOCK in MERGE";
 
   public static final ConfigDef CONFIG_DEF = new ConfigDef()
         // Connection
@@ -467,6 +478,18 @@ public class JdbcSinkConfig extends AbstractConfig {
             QUOTE_SQL_IDENTIFIERS_DISPLAY,
             QUOTE_METHOD_RECOMMENDER
         )
+        // DML
+        .define(
+            MSSQL_USE_MERGE_HOLDLOCK,
+            ConfigDef.Type.BOOLEAN,
+            MSSQL_USE_MERGE_HOLDLOCK_DEFAULT,
+            ConfigDef.Importance.LOW,
+            MSSQL_USE_MERGE_HOLDLOCK_DOC,
+            DML_GROUP,
+            1,
+            ConfigDef.Width.MEDIUM,
+            MSSQL_USE_MERGE_HOLDLOCK_DISPLAY
+        )
         // Retries
         .define(
             MAX_RETRIES,
@@ -491,6 +514,12 @@ public class JdbcSinkConfig extends AbstractConfig {
             2,
             ConfigDef.Width.SHORT,
             RETRY_BACKOFF_MS_DISPLAY
+        )
+        .defineInternal(
+            TRIM_SENSITIVE_LOG_ENABLED,
+            ConfigDef.Type.BOOLEAN,
+            TRIM_SENSITIVE_LOG_ENABLED_DEFAULT,
+            ConfigDef.Importance.LOW
         );
 
   public final String connectorName;
@@ -513,6 +542,9 @@ public class JdbcSinkConfig extends AbstractConfig {
   public final String dialectName;
   public final TimeZone timeZone;
   public final EnumSet<TableType> tableTypes;
+  public final boolean useHoldlockInMerge;
+
+  public final boolean trimSensitiveLogsEnabled;
 
   public JdbcSinkConfig(Map<?, ?> props) {
     super(CONFIG_DEF, props);
@@ -536,7 +568,8 @@ public class JdbcSinkConfig extends AbstractConfig {
     fieldsWhitelist = new HashSet<>(getList(FIELDS_WHITELIST));
     String dbTimeZone = getString(DB_TIMEZONE_CONFIG);
     timeZone = TimeZone.getTimeZone(ZoneId.of(dbTimeZone));
-
+    useHoldlockInMerge = getBoolean(MSSQL_USE_MERGE_HOLDLOCK);
+    trimSensitiveLogsEnabled = getBoolean(TRIM_SENSITIVE_LOG_ENABLED);
     if (deleteEnabled && pkMode != PrimaryKeyMode.RECORD_KEY) {
       throw new ConfigException(
           "Primary key mode must be 'record_key' when delete support is enabled");
