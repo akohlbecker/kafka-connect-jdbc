@@ -102,11 +102,7 @@ public class CachedConnectionProvider implements ConnectionProvider {
     }
   }
 
-  public void close(boolean stopping) {
-    isRunning = !stopping;
-    close();
-  }
-
+  private synchronized void closeConnection() {
     if (connection != null) {
       try {
         log.debug("Closing connection #{} to {}", count, provider);
@@ -117,6 +113,14 @@ public class CachedConnectionProvider implements ConnectionProvider {
         connection = null;
       }
     }
+  }
+
+  /**
+   * implementation of close for the filemaker dialect
+   */
+  public void close(boolean stopping) {
+    isRunning = !stopping;
+    close();
   }
 
   @Override
