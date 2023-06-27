@@ -16,6 +16,8 @@ You can build kafka-connect-jdbc with Maven using the standard lifecycle phases.
 
 # FilemakerDialect
 
+By now this project implements support for Filemaker 18. Please create branches to supprt other versions. 
+
 ## Running the FilemakerDialect integration tests
 
 There is no way to use FileMaker Server for testing without purchasing a license or applying for a 
@@ -28,12 +30,12 @@ This server needs to offer two databases which can be used for the tests.
 Please copy the `src/test/resources/FilemakerJdbcConnect.properties.template` to `src/test/resources/FilemakerJdbcConnect.properties` 
 and configure it accordingly.
 
-In future this will be simplified by making use of a docker image. Running the Filemaker related integration tests this ways requires the docker image `filemakerServer19:latest` being installed locally.
+In future this will be simplified by making use of a docker image. Running the Filemaker related integration tests this ways requires the docker image `filemakerServer18:latest` being installed locally.
 
-Building the FileMaker Server 19 Docker image:
+Building the FileMaker Server 18 Docker image (the version is hard coded in the script):
 
 ~~~
-./scripts/make-fm19-docker-image.sh
+./scripts/make-fm-docker-image.sh
 ~~~
 
 ### Build and delpoy
