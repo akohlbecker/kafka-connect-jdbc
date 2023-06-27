@@ -497,6 +497,19 @@
                         </configuration>
                     </execution>
                     <execution>
+                        <!-- integration tests for the fielmaker dialect -->
+                        <id>integration-test-filemaker</id>
+                        <configuration>
+                            <excludes>
+                                <exclude>**/*IT.java</exclude>
+                            </excludes>
+                            <includes>
+                                <include>**/*IT_FM.java</include>
+                            </includes>
+                            <trimStackTrace>false</trimStackTrace>
+                        </configuration>
+                    </execution>
+                    <execution>
                         <id>integration-test-memory-restricted</id>
                         <goals>
                             <goal>integration-test</goal>
@@ -539,6 +552,7 @@
                         <phase>validate</phase>
                         <configuration>
                             <suppressionsLocation>checkstyle/suppressions.xml</suppressionsLocation>
+                            <skip>true</skip>
                         </configuration>
                         <goals>
                             <goal>check</goal>

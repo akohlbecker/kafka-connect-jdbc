@@ -20,6 +20,11 @@ By now this project implements support for Filemaker 18. Please create branches 
 
 ## Running the FilemakerDialect integration tests
 
+Test classes: 
+
+* `io.confluent.connect.jdbc.source.integration.FilemakerDialectConnectIT_FM.java` : `mvn -Dit.test=FilemakerDialectConnectIT_FM verify`
+* `io.confluent.connect.jdbc.source.integration.FilemakerDialectIT_FM` :  : `mvn -Dit.test=FilemakerDialectIT_FM verify `
+
 There is no way to use FileMaker Server for testing without purchasing a license or applying for a 
 test license at the customer service. So running integration tests which require a these FileMaker Server 
 can not be fully automated.
@@ -63,10 +68,10 @@ For local delpoyment add the API token to ~/.m2/settings.xml
 
 For delpoyment in gitlab the `./ci_settings.xml` is needed for further details please refer to [gitlab create-maven-packages-with-gitlab-cicd](https://docs.gitlab.com/ee/user/packages/maven_repository/index.html#create-maven-packages-with-gitlab-cicd)
 
-maven command for delpoyment from locally:
+maven command for delpoyment from locally (using ` -Dcheckstyle.skip=true` is no longer needed as this has been set as default in the pom.xml):
 
 ~~~
-mvn clean deploy -DskipTests -Dcheckstyle.skip=true 
+mvn clean deploy -DskipTests
 ~~~
 
 **TODO**: 
