@@ -18,8 +18,10 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.TimeZone;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 
+import org.apache.kafka.clients.admin.Admin;
 import org.apache.kafka.connect.runtime.AbstractStatus;
 import org.apache.kafka.connect.runtime.ConnectorConfig;
 import org.apache.kafka.connect.runtime.AbstractStatus.State;
@@ -57,11 +59,13 @@ import io.confluent.connect.jdbc.util.ColumnId;
 @Category(IntegrationTest.class)
 public class FilemakerDialectConnectIT_FM extends FilemakerDialectITBase {
 
-	private static Logger logger = LoggerFactory.getLogger(FilemakerDialectConnectIT_FM.class);
 
-	private static final String FM_JDBC_CONNECT_PROPERTIES = "FilemakerJdbcConnect.properties";
+	private static final String TOPIC_PREFIX = "topic_";
+	private static Logger logger = LoggerFactory.getLogger(FilemakerDialectConnectIT_FM.class);
 	private static final long CONNECTOR_STARTUP_DURATION_MS = TimeUnit.SECONDS.toMillis(60);
-	private static final long POLLING_INTERVAL_MS =  TimeUnit.MINUTES.toMillis(5); // 300000;
+
+	private static final long POLLING_INTERVAL_MS =  TimeUnit.SECONDS.toMillis(30); //  5 m = 300000 ms;
+	private static final int POLL_MULTIPLIER = 4; // 50
 	
 //	
 //	@ClassRule
@@ -81,67 +85,62 @@ public class FilemakerDialectConnectIT_FM extends FilemakerDialectITBase {
 	private static final String CONNECTOR_NAME_1 = "JdbcFMSourceConnector_1";
 	private static final String CONNECTOR_NAME_2 = "JdbcFMSourceConnector_2";
 	private static final String CONNECTOR_NAME_3 = "JdbcFMSourceConnector_3";
-  EmbeddedConnectCluster connect;
-  Map<String, String> jdbcSourceConnectorProps_1;
-  Map<String, String> jdbcSourceConnectorProps_2;
-  Map<String, String> jdbcSourceConnectorProps_3;
+	
+	Map<String, String> jdbcSourceConnectorProps_1;
+	Map<String, String> jdbcSourceConnectorProps_2;
+    Map<String, String> jdbcSourceConnectorProps_3;
   
-  @Before
-  public void before() {
-  	super.before();
-  	jdbcSourceConnectorProps_1 = jdbcFMSourceConfiguration();
-  	jdbcSourceConnectorProps_1.put(JdbcSourceConnectorConfig.TABLE_WHITELIST_CONFIG, "Archive_zu_Dokument");
-  	jdbcSourceConnectorProps_2 = jdbcFMSourceConfiguration();
-  	jdbcSourceConnectorProps_2.put(JdbcSourceConnectorConfig.TABLE_WHITELIST_CONFIG, "Archive");
-  	jdbcSourceConnectorProps_3 = jdbcFMSourceConfiguration();
-  	jdbcSourceConnectorProps_3.put(JdbcSourceConnectorConfig.TABLE_WHITELIST_CONFIG, "Objekt");
-
-    connect = new EmbeddedConnectCluster.Builder()
-        .name("connect-cluster")
-        .numWorkers(1)
-        .brokerProps(new Properties())
-        .build();
-
-    // start the clusters
-    logger.debug("Starting embedded Connect worker, Kafka broker, and ZK");
-    connect.start();
-  }
-
-	private Map<String, String> jdbcFMSourceConfiguration() {
-		Map<String, String> props = new HashMap<>();
-  	props.put(ConnectorConfig.CONNECTOR_CLASS_CONFIG, JdbcSourceConnector.class.getName());
-  	props.put(TASKS_MAX_CONFIG, "1");
-  	props.put(JdbcSourceConnectorConfig.CONNECTION_URL_CONFIG, composeJdbcUrlWithAuth(jdbcURL_db1));
-  	props.put(JdbcSourceConnectorConfig.MODE_CONFIG, JdbcSourceConnectorConfig.MODE_BULK);
-  	props.put(JdbcSourceConnectorConfig.INCREMENTING_COLUMN_NAME_CONFIG, "id");
-  	props.put(JdbcSourceConnectorConfig.POLL_INTERVAL_MS_CONFIG, Long.toString(POLLING_INTERVAL_MS));
-  	props.put(JdbcSourceTaskConfig.TOPIC_PREFIX_CONFIG, "topic_");
-  	props.put(JdbcSourceConnectorConfig.VALIDATE_NON_NULL_CONFIG, "false");
-  	
-  	props.put(JdbcSourceConnectorConfig.CONNECTION_POOL_CONFIG, "true");
-  	
-  	return props;
+  
+	
+	private Map<String, String> jdbcFMSourceConfiguration(String tableName, boolean useConnectionPool) {
+		
+		Map<String, String> props =  new HashMap<>();
+	  	props.put(ConnectorConfig.CONNECTOR_CLASS_CONFIG, JdbcSourceConnector.class.getName());
+	  	props.put(TASKS_MAX_CONFIG, "1");
+	  	props.put(JdbcSourceConnectorConfig.CONNECTION_URL_CONFIG, composeJdbcUrlWithAuth(jdbcURL_db1, db1_UserAccountQueryParamsString));
+	  	props.put(JdbcSourceConnectorConfig.INCREMENTING_COLUMN_NAME_CONFIG, "id");
+	  	
+	  	// when using Bulk mode the BulkTableQuerier always queries for the full table: SELECT * FROM {TABLE}
+	  	// but JdbcSourceTask.poll() will only consume batch.max.rows and send them to the topic.
+	  	// setting batch.max.rows to a high value helps reducing the poll frequency in order to get all 
+	  	// records 
+	  	props.put(JdbcSourceConnectorConfig.MODE_CONFIG, JdbcSourceConnectorConfig.MODE_BULK);
+	  	props.put(JdbcSourceConnectorConfig.BATCH_MAX_ROWS_CONFIG, "1000");
+	  	props.put(JdbcSourceConnectorConfig.POLL_INTERVAL_MS_CONFIG, Long.toString(POLLING_INTERVAL_MS));
+	  	props.put(JdbcSourceConnectorConfig.TABLE_POLL_INTERVAL_MS_CONFIG, Long.toString(TimeUnit.DAYS.toMillis(1)));
+	  	
+	  	props.put(JdbcSourceTaskConfig.TOPIC_PREFIX_CONFIG, TOPIC_PREFIX);
+	  	props.put(JdbcSourceConnectorConfig.VALIDATE_NON_NULL_CONFIG, "false");
+	  	
+	  	props.put(JdbcSourceConnectorConfig.CONNECTION_POOL_CONFIG, Boolean.toString(useConnectionPool));
+	  	
+	  	props.put(JdbcSourceConnectorConfig.TABLE_WHITELIST_CONFIG, tableName);
+	  	
+	  	return props;
 	}
 
-  @After
-  public void after() {
-    if (connect != null) {
-      connect.stop();
-    }
-  }
+	@Before
+	public void before() throws InterruptedException, ExecutionException {
+		
+		jdbcSourceConnectorProps_1 = jdbcFMSourceConfiguration("Archive_zu_Dokument", false);
+		jdbcSourceConnectorProps_2 = jdbcFMSourceConfiguration("Bestand", false);
+		jdbcSourceConnectorProps_3 = jdbcFMSourceConfiguration("Objekt", false);
 
-	
-	public Properties jdbcConnectionProperties() {
-		Properties jdbcConnectionProperties = new Properties();
-		try {
-			jdbcConnectionProperties.load(FilemakerDialectConnectIT_FM.class.getClassLoader().getResourceAsStream(FM_JDBC_CONNECT_PROPERTIES));
-			logger.info(FM_JDBC_CONNECT_PROPERTIES + "loaded");
-			return jdbcConnectionProperties;
-			
-		} catch (IOException e) {
-			logger.warn(FM_JDBC_CONNECT_PROPERTIES + " missing, skipping test execution");
-			return null; 
-		}
+		// start the clusters
+		logger.debug("Starting embedded Connect worker, Kafka broker, and ZK");
+		startConnect();
+		
+		// create topic in Kafka
+		connect.kafka().createTopic(TOPIC_PREFIX + "Archive_zu_Dokument");
+		connect.kafka().createTopic(TOPIC_PREFIX + "Bestand");
+		connect.kafka().createTopic(TOPIC_PREFIX + "Objekt");
+
+		//kafkaAdminClient.listTopics().names().get().forEach(n -> logger.debug("TOPIC: " + n));
+	}
+
+	@After
+	public void after() {
+		stopConnect();
 	}
 	
 	private Properties jdbcConnectionPoolProperties() {
@@ -151,36 +150,33 @@ public class FilemakerDialectConnectIT_FM extends FilemakerDialectITBase {
 	}
 	
 	/**
-   * Create a {@link JdbcSourceConnectorConfig} with the specified URL and optional config props.
-   *
-   * @param url           the database URL; may not be null
-   * @return the config; never null
-   */
-  protected JdbcSourceConnectorConfig sourceConfigWithUrl(
-      String url,
-      String... propertyPairs
-  ) {
-    Map<String, String> connProps = new HashMap<>();
-    connProps.put(JdbcSourceConnectorConfig.MODE_CONFIG, JdbcSourceConnectorConfig.MODE_BULK);
-    connProps.put(JdbcSourceConnectorConfig.TOPIC_PREFIX_CONFIG, "test-");
-    // connProps.putAll(propertiesFromPairs(propertyPairs));
-    connProps.put(JdbcSourceConnectorConfig.CONNECTION_URL_CONFIG, url);
-    return new JdbcSourceConnectorConfig(connProps);
-  }
+	 * Create a {@link JdbcSourceConnectorConfig} with the specified URL and
+	 * optional config props.
+	 *
+	 * @param url the database URL; may not be null
+	 * @return the config; never null
+	 */
+	protected JdbcSourceConnectorConfig sourceConfigWithUrl(String url, String... propertyPairs) {
+		Map<String, String> connProps = new HashMap<>();
+		connProps.put(JdbcSourceConnectorConfig.MODE_CONFIG, JdbcSourceConnectorConfig.MODE_BULK);
+		connProps.put(JdbcSourceConnectorConfig.TOPIC_PREFIX_CONFIG, TOPIC_PREFIX);
+		// connProps.putAll(propertiesFromPairs(propertyPairs));
+		connProps.put(JdbcSourceConnectorConfig.CONNECTION_URL_CONFIG, url);
+		return new JdbcSourceConnectorConfig(connProps);
+	}
   
-  @Test
-  public void testConnectorsParallelStart() throws Exception {
- 
-    connect.configureConnector(CONNECTOR_NAME_1, jdbcSourceConnectorProps_1);
-    connect.configureConnector(CONNECTOR_NAME_2, jdbcSourceConnectorProps_2);
-    connect.configureConnector(CONNECTOR_NAME_3, jdbcSourceConnectorProps_3);
-
-    waitForConnectorToStart(CONNECTOR_NAME_1, 1);
-    waitForConnectorToStart(CONNECTOR_NAME_2, 1);
-    waitForConnectorToStart(CONNECTOR_NAME_3, 1);
-    logger.info(">>>>>>>>>>>>>>>>>>>>>> all connectors started");
-    Thread.sleep(POLLING_INTERVAL_MS * 50);
-    logger.info(">>>>>>>>>>>>>>>>>>>>>> ending test after waiting for 5 poll intervals");
+	// @Test // The hikari connection pool implementation has been rejected and should be removed
+	public void testConnectorsParallelStart_withPool() throws Exception {
+		connect.configureConnector(CONNECTOR_NAME_1, jdbcFMSourceConfiguration("Archive_zu_Dokument", true));
+		connect.configureConnector(CONNECTOR_NAME_2, jdbcFMSourceConfiguration("Bestand", true));
+		connect.configureConnector(CONNECTOR_NAME_3, jdbcFMSourceConfiguration("Objekt",  true));
+		waitForConnectorToStart(CONNECTOR_NAME_1, 1);
+		waitForConnectorToStart(CONNECTOR_NAME_2, 1);
+		// waitForConnectorToStart(CONNECTOR_NAME_3, 1);
+		logger.info(">>>>>>>>>>>>>>>>>>>>>> all connectors started");
+		logger.info(".... polling for " + (POLLING_INTERVAL_MS * POLL_MULTIPLIER / 1000) + " s ....");
+		Thread.sleep(POLLING_INTERVAL_MS * POLL_MULTIPLIER);
+		logger.info(">>>>>>>>>>>>>>>>>>>>>> ending test after waiting for 5 poll intervals");
 //
 //    connect.requestPut(connect.endpointForResource(String.format("connectors/%s/pause", CONNECTOR_NAME_1)), "");
 //
@@ -190,7 +186,32 @@ public class FilemakerDialectConnectIT_FM extends FilemakerDialectITBase {
 //    waitForConnectorState(CONNECTOR_NAME_1, 1,
 //        3*POLLING_INTERVAL_MS, State.RUNNING);
 //    
-  }
+	}
+  
+	@Test
+	public void testConnectorsParallelStart_noPool() throws Exception {
+	
+		connect.configureConnector(CONNECTOR_NAME_1, jdbcSourceConnectorProps_1);
+		connect.configureConnector(CONNECTOR_NAME_2, jdbcSourceConnectorProps_2);
+//		connect.configureConnector(CONNECTOR_NAME_3, jdbcSourceConnectorProps_3);
+
+		waitForConnectorToStart(CONNECTOR_NAME_1, 1);
+		waitForConnectorToStart(CONNECTOR_NAME_2, 1);
+		// waitForConnectorToStart(CONNECTOR_NAME_3, 1);
+		logger.info(">>>>>>>>>>>>>>>>>>>>>> all connectors started");
+		logger.info(".... polling for " + (POLLING_INTERVAL_MS * POLL_MULTIPLIER / 1000) + " s ....");
+		Thread.sleep(POLLING_INTERVAL_MS * POLL_MULTIPLIER);
+		logger.info(">>>>>>>>>>>>>>>>>>>>>> ending test after waiting for 5 poll intervals");
+//
+//    connect.requestPut(connect.endpointForResource(String.format("connectors/%s/pause", CONNECTOR_NAME_1)), "");
+//
+//    waitForConnectorState(CONNECTOR_NAME_1, 1, 3*POLLING_INTERVAL_MS, State.PAUSED);
+//
+//    connect.requestPut(connect.endpointForResource(String.format("connectors/%s/resume", CONNECTOR_NAME_1)), "");
+//    waitForConnectorState(CONNECTOR_NAME_1, 1,
+//        3*POLLING_INTERVAL_MS, State.RUNNING);
+//    
+	}
 
   protected Optional<Boolean> assertConnectorAndTasksStatus(String connectorName, int numTasks, AbstractStatus.State expectedStatus) {
     try {
@@ -214,7 +235,7 @@ public class FilemakerDialectConnectIT_FM extends FilemakerDialectITBase {
     TestUtils.waitForCondition(
         () -> assertConnectorAndTasksStatus(name, numTasks, state).orElse(false),
         timeoutMs,
-        "Connector tasks did not transition to state " + state + " in time"
+        "Connector tasks did not transition to state " + state + " after " + timeoutMs + " ms"
     );
     return System.currentTimeMillis();
   }
@@ -227,7 +248,7 @@ public class FilemakerDialectConnectIT_FM extends FilemakerDialectITBase {
 		int numConnections = 5;
 		for (int i = 0; i < numConnections; i++) {
 			dialectInstances.add( 
-					new FilemakerDialect(sourceConfigWithUrl(jdbcURL_db1 + "?" + dbUserAccountQueryParamsString + "&SocketTimeout=" + JDBC_SOCKET_TIMEOUT))
+					new FilemakerDialect(sourceConfigWithUrl(composeJdbcUrlWithAuth(jdbcURL_db1, db1_UserAccountQueryParamsString)))
 			);
 		}
 		List<SQLException> exceptions = new ArrayList<>();
@@ -271,20 +292,30 @@ public class FilemakerDialectConnectIT_FM extends FilemakerDialectITBase {
 	
 	@Test
 	public void testGetPool() throws SQLException {
-		FilemakerDialect dialect_db1_1 = new FilemakerDialect(sourceConfigWithUrl(jdbcURL_db1 + "?" + dbUserAccountQueryParamsString + "&SocketTimeout=" + JDBC_SOCKET_TIMEOUT));
-		FilemakerDialect dialect_db1_2 = new FilemakerDialect(sourceConfigWithUrl(jdbcURL_db1 + "?" + dbUserAccountQueryParamsString + "&SocketTimeout=" + JDBC_SOCKET_TIMEOUT));
-		FilemakerDialect dialect_db2_1 = new FilemakerDialect(sourceConfigWithUrl(jdbcURL_db2 + "?" + dbUserAccountQueryParamsString + "&SocketTimeout=" + JDBC_SOCKET_TIMEOUT));
+		
+		String db1JDBCUrl = composeJdbcUrlWithAuth(jdbcURL_db1, db1_UserAccountQueryParamsString);
+		String db2JDBCUrl =  composeJdbcUrlWithAuth(jdbcURL_db2, db2_UserAccountQueryParamsString);
+		logger.info("db1JDBCUrl:" + db1JDBCUrl);
+		logger.info("db2JDBCUrl:" + db2JDBCUrl);
+		FilemakerDialect dialect_db1_1 = new FilemakerDialect(sourceConfigWithUrl(db1JDBCUrl));
+		FilemakerDialect dialect_db1_2 = new FilemakerDialect(sourceConfigWithUrl(db1JDBCUrl));
+		FilemakerDialect dialect_db2_1 = new FilemakerDialect(sourceConfigWithUrl(db2JDBCUrl));
 
 		ConnectionPoolProvider.singleton().getConnectionPool(jdbcConnectionPoolProperties(), dialect_db1_1);
 		assertEquals(1, ConnectionPoolProvider.singleton().poolCount());
+		
 		ConnectionPoolProvider.singleton().getConnectionPool(jdbcConnectionPoolProperties(), dialect_db1_2);
 		assertEquals(1, ConnectionPoolProvider.singleton().poolCount());
+		
 		ConnectionPoolProvider.singleton().getConnectionPool(jdbcConnectionPoolProperties(), dialect_db2_1);
 		assertEquals(2, ConnectionPoolProvider.singleton().poolCount());
+		
 		ConnectionPoolProvider.singleton().release(dialect_db1_1);
 		assertEquals(2, ConnectionPoolProvider.singleton().poolCount());
+		
 		ConnectionPoolProvider.singleton().release(dialect_db1_2);
 		assertEquals(1, ConnectionPoolProvider.singleton().poolCount());
+		
 		ConnectionPoolProvider.singleton().release(dialect_db2_1);
 		assertEquals(0, ConnectionPoolProvider.singleton().poolCount());
 	}

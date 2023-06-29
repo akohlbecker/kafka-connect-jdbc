@@ -4,7 +4,6 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
-import java.io.IOException;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
@@ -27,7 +26,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import io.confluent.common.utils.IntegrationTest;
-import io.confluent.connect.jdbc.dialect.ConnectionPoolProvider;
 import io.confluent.connect.jdbc.dialect.DatabaseDialect;
 import io.confluent.connect.jdbc.dialect.FilemakerDialect;
 import io.confluent.connect.jdbc.source.JdbcSourceConnectorConfig;
@@ -36,9 +34,10 @@ import io.confluent.connect.jdbc.source.TimestampIncrementingTableQuerierFactory
 import io.confluent.connect.jdbc.util.ColumnDefinition;
 import io.confluent.connect.jdbc.util.ColumnDefinition.Nullability;
 import io.confluent.connect.jdbc.util.ColumnId;
-import io.confluent.connect.jdbc.util.TableId;
 
 /** 
+ * Testing the Filemaker SQL Dialect implementation
+ * <p>
  * Class name suffix "IT_FM" to put FileMaker tests into another suite which is not run by default.
  * <p>
  * There is no way to use FileMaker Server for testing without purchasing a license or applying for a 
@@ -49,8 +48,6 @@ import io.confluent.connect.jdbc.util.TableId;
 public class FilemakerDialectIT_FM extends FilemakerDialectITBase {
 
 	private static Logger log = LoggerFactory.getLogger(FilemakerDialectIT_FM.class);
-
-	private static final String FM_JDBC_CONNECT_PROPERTIES = "FilemakerJdbcConnect.properties";
 	
 //	
 //	@ClassRule
@@ -64,28 +61,8 @@ public class FilemakerDialectIT_FM extends FilemakerDialectITBase {
 //              .withFixedExposedPort(443, 443)
 //              .withFixedExposedPort(80, 80)
 //              .withFixedExposedPort(16001, 16001);
-
 	
-	public Properties jdbcConnectionProperties() {
-		Properties jdbcConnectionProperties = new Properties();
-		try {
-			jdbcConnectionProperties.load(FilemakerDialectIT_FM.class.getClassLoader().getResourceAsStream(FM_JDBC_CONNECT_PROPERTIES));
-			log.info(FM_JDBC_CONNECT_PROPERTIES + "loaded");
-			return jdbcConnectionProperties;
-			
-		} catch (IOException e) {
-			log.warn(FM_JDBC_CONNECT_PROPERTIES + " missing, skipping test execution");
-			return null; 
-		}
-	}
-	
-	private Properties jdbcConnectionPoolProperties() {
-		Properties props =  jdbcConnectionProperties(); 
-		props.put(JdbcSourceConnectorConfig.CONNECTION_POOL_CONFIG, true);
-		return props;
-	}
-	
-	/**
+  /**
    * Create a {@link JdbcSourceConnectorConfig} with the specified URL and optional config props.
    *
    * @param url           the database URL; may not be null
@@ -150,6 +127,8 @@ public class FilemakerDialectIT_FM extends FilemakerDialectITBase {
 	      }
 	}
 
+	private static final long POLLING_INTERVAL_MS = 500;
+
 	/* ***********************************************************************************************
 	 * Database specific tests
 	 * ***********************************************************************************************
@@ -173,9 +152,6 @@ public class FilemakerDialectIT_FM extends FilemakerDialectITBase {
 	private static final String COLUMN_AENDERUNG_DATUM = "Aenderung_Datum";
 	private static final String COLUMN_ERSTELLUNG_DATUM = "Erstellung_Datum";
 	private static final String OBJEKT_SIGNATUR_ARCHIV = "Objekt_Signatur_Archiv";
-	
-
-	private static final long POLLING_INTERVAL_MS = 500;
 
 	
 	@Test
@@ -266,7 +242,7 @@ public class FilemakerDialectIT_FM extends FilemakerDialectITBase {
 		int numConnections = 5;
 		for (int i = 0; i < numConnections; i++) {
 			dialectInstances.add( 
-					new FilemakerDialect(sourceConfigWithUrl(composeJdbcUrlWithAuth(jdbcURL_db1)))
+					new FilemakerDialect(sourceConfigWithUrl(composeJdbcUrlWithAuth(jdbcURL_db1, db1_UserAccountQueryParamsString)))
 			);
 		}
 		List<SQLException> exceptions = new ArrayList<>();
@@ -307,26 +283,4 @@ public class FilemakerDialectIT_FM extends FilemakerDialectITBase {
 		
 		assertTrue(exceptions.isEmpty());
 	}
-
-	@Test
-	public void testGetPool() throws SQLException {
-		FilemakerDialect dialect_db1_1 = new FilemakerDialect(sourceConfigWithUrl(composeJdbcUrlWithAuth(jdbcURL_db1)));
-		FilemakerDialect dialect_db1_2 = new FilemakerDialect(sourceConfigWithUrl(composeJdbcUrlWithAuth(jdbcURL_db1)));
-		FilemakerDialect dialect_db2_1 = new FilemakerDialect(sourceConfigWithUrl(composeJdbcUrlWithAuth(jdbcURL_db2)));
-
-		ConnectionPoolProvider.singleton().getConnectionPool(jdbcConnectionPoolProperties(), dialect_db1_1);
-		assertEquals(1, ConnectionPoolProvider.singleton().poolCount());
-		ConnectionPoolProvider.singleton().getConnectionPool(jdbcConnectionPoolProperties(), dialect_db1_2);
-		assertEquals(1, ConnectionPoolProvider.singleton().poolCount());
-		ConnectionPoolProvider.singleton().getConnectionPool(jdbcConnectionPoolProperties(), dialect_db2_1);
-		assertEquals(2, ConnectionPoolProvider.singleton().poolCount());
-		ConnectionPoolProvider.singleton().release(dialect_db1_1);
-		assertEquals(2, ConnectionPoolProvider.singleton().poolCount());
-		ConnectionPoolProvider.singleton().release(dialect_db1_2);
-		assertEquals(1, ConnectionPoolProvider.singleton().poolCount());
-		ConnectionPoolProvider.singleton().release(dialect_db2_1);
-		assertEquals(0, ConnectionPoolProvider.singleton().poolCount());
-	}
-
-
 }

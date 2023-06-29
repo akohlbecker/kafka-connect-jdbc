@@ -16,7 +16,9 @@ import com.zaxxer.hikari.HikariDataSource;
 
 public class ConnectionPoolProvider {
 	
-  private static final Logger logger = LoggerFactory.getLogger(ConnectionPoolProvider.class);
+  private static final int DEFAULT_POOL_SIZE = 2;
+
+private static final Logger logger = LoggerFactory.getLogger(ConnectionPoolProvider.class);
 	
 	static private ConnectionPoolProvider instance = null;
 	
@@ -76,7 +78,7 @@ public class ConnectionPoolProvider {
 		final HikariConfig hikariConfig = new HikariConfig();
 		hikariConfig.setJdbcUrl(dialect.jdbcUrl);
 		hikariConfig.setMinimumIdle(0);
-		hikariConfig.setMaximumPoolSize(2);
+		hikariConfig.setMaximumPoolSize(DEFAULT_POOL_SIZE);
 		hikariConfig.setDataSourceProperties(properties);
 		if(!dialect.isJDBCv4Driver()) {
 			hikariConfig.setConnectionTestQuery(dialect.checkConnectionQuery());
