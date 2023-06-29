@@ -9,6 +9,9 @@ import java.util.Properties;
 import java.util.concurrent.ExecutionException;
 
 import org.apache.kafka.clients.admin.Admin;
+import org.apache.kafka.clients.consumer.ConsumerConfig;
+import org.apache.kafka.clients.consumer.KafkaConsumer;
+import org.apache.kafka.test.MockDeserializer;
 import org.junit.After;
 import org.junit.Before;
 import org.slf4j.Logger;
@@ -87,6 +90,16 @@ public abstract class FilemakerDialectITBase extends BaseConnectorIT {
 	
 	protected String composeJdbcUrlWithAuth(String baseJdbcURL, String dbUserAccountQueryParamsString) {
 		return baseJdbcURL + "?" + dbUserAccountQueryParamsString + "&SocketTimeout=" + JDBC_SOCKET_TIMEOUT;
+	}
+	
+	public KafkaConsumer<String, String> createConsumerClient() {
+		final Properties clientConfig = new Properties();
+        clientConfig.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, connect.kafka().bootstrapServers());
+        clientConfig.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, MockDeserializer.class);
+        clientConfig.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, MockDeserializer.class);
+   
+		KafkaConsumer<String,String> consumer = new KafkaConsumer<>(clientConfig);
+		return consumer;
 	}
 
 	@After

@@ -4,33 +4,31 @@ import static org.apache.kafka.connect.runtime.ConnectorConfig.TASKS_MAX_CONFIG;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 
-import java.io.IOException;
-import java.sql.Connection;
 import java.sql.SQLException;
-import java.sql.Statement;
-import java.sql.Types;
 import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Calendar;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
-import java.util.TimeZone;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 import org.apache.kafka.clients.admin.Admin;
+import org.apache.kafka.clients.consumer.ConsumerConfig;
+import org.apache.kafka.clients.consumer.KafkaConsumer;
+import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.connect.runtime.AbstractStatus;
-import org.apache.kafka.connect.runtime.ConnectorConfig;
 import org.apache.kafka.connect.runtime.AbstractStatus.State;
+import org.apache.kafka.connect.runtime.ConnectorConfig;
 import org.apache.kafka.connect.runtime.rest.entities.ConnectorStateInfo;
-import org.apache.kafka.connect.util.clusters.EmbeddedConnectCluster;
+import org.apache.kafka.test.MockDeserializer;
 import org.apache.kafka.test.TestUtils;
 import org.junit.After;
 import org.junit.Before;
-import org.junit.Ignore;
 import org.junit.Test;
 import org.junit.experimental.categories.Category;
 import org.slf4j.Logger;
@@ -39,15 +37,9 @@ import org.slf4j.LoggerFactory;
 import io.confluent.common.utils.IntegrationTest;
 import io.confluent.connect.jdbc.JdbcSourceConnector;
 import io.confluent.connect.jdbc.dialect.ConnectionPoolProvider;
-import io.confluent.connect.jdbc.dialect.DatabaseDialect;
 import io.confluent.connect.jdbc.dialect.FilemakerDialect;
 import io.confluent.connect.jdbc.source.JdbcSourceConnectorConfig;
 import io.confluent.connect.jdbc.source.JdbcSourceTaskConfig;
-import io.confluent.connect.jdbc.source.TimestampIncrementingTableQuerier;
-import io.confluent.connect.jdbc.source.TimestampIncrementingTableQuerierFactory;
-import io.confluent.connect.jdbc.util.ColumnDefinition;
-import io.confluent.connect.jdbc.util.ColumnDefinition.Nullability;
-import io.confluent.connect.jdbc.util.ColumnId;
 
 /** 
  * Class name suffix "IT_FM" to put FileMaker tests into another suite which is not run by default.
@@ -60,12 +52,13 @@ import io.confluent.connect.jdbc.util.ColumnId;
 public class FilemakerDialectConnectIT_FM extends FilemakerDialectITBase {
 
 
+	private static final String BATCH_MAX_ROWS = "100";
 	private static final String TOPIC_PREFIX = "topic_";
 	private static Logger logger = LoggerFactory.getLogger(FilemakerDialectConnectIT_FM.class);
 	private static final long CONNECTOR_STARTUP_DURATION_MS = TimeUnit.SECONDS.toMillis(60);
 
-	private static final long POLLING_INTERVAL_MS =  TimeUnit.SECONDS.toMillis(30); //  5 m = 300000 ms;
-	private static final int POLL_MULTIPLIER = 4; // 50
+	private static final long POLLING_INTERVAL_MS =  TimeUnit.SECONDS.toMillis(10); //  5 m = 300000 ms;
+	private static final int POLLING_ITERATIONS = 4; // 50
 	
 //	
 //	@ClassRule
@@ -80,8 +73,6 @@ public class FilemakerDialectConnectIT_FM extends FilemakerDialectITBase {
 //              .withFixedExposedPort(80, 80)
 //              .withFixedExposedPort(16001, 16001);
 
-	
-
 	private static final String CONNECTOR_NAME_1 = "JdbcFMSourceConnector_1";
 	private static final String CONNECTOR_NAME_2 = "JdbcFMSourceConnector_2";
 	private static final String CONNECTOR_NAME_3 = "JdbcFMSourceConnector_3";
@@ -90,9 +81,10 @@ public class FilemakerDialectConnectIT_FM extends FilemakerDialectITBase {
 	Map<String, String> jdbcSourceConnectorProps_2;
     Map<String, String> jdbcSourceConnectorProps_3;
   
-  
+    Admin adminClient;
+	private KafkaConsumer<String, String> consumerClient;
 	
-	private Map<String, String> jdbcFMSourceConfiguration(String tableName, boolean useConnectionPool) {
+	private Map<String, String> jdbcFMSourceConfiguration(String tableName, boolean usePerHostConnectionPool) {
 		
 		Map<String, String> props =  new HashMap<>();
 	  	props.put(ConnectorConfig.CONNECTOR_CLASS_CONFIG, JdbcSourceConnector.class.getName());
@@ -105,14 +97,14 @@ public class FilemakerDialectConnectIT_FM extends FilemakerDialectITBase {
 	  	// setting batch.max.rows to a high value helps reducing the poll frequency in order to get all 
 	  	// records 
 	  	props.put(JdbcSourceConnectorConfig.MODE_CONFIG, JdbcSourceConnectorConfig.MODE_BULK);
-	  	props.put(JdbcSourceConnectorConfig.BATCH_MAX_ROWS_CONFIG, "1000");
+	  	props.put(JdbcSourceConnectorConfig.BATCH_MAX_ROWS_CONFIG, BATCH_MAX_ROWS);
 	  	props.put(JdbcSourceConnectorConfig.POLL_INTERVAL_MS_CONFIG, Long.toString(POLLING_INTERVAL_MS));
 	  	props.put(JdbcSourceConnectorConfig.TABLE_POLL_INTERVAL_MS_CONFIG, Long.toString(TimeUnit.DAYS.toMillis(1)));
 	  	
 	  	props.put(JdbcSourceTaskConfig.TOPIC_PREFIX_CONFIG, TOPIC_PREFIX);
 	  	props.put(JdbcSourceConnectorConfig.VALIDATE_NON_NULL_CONFIG, "false");
 	  	
-	  	props.put(JdbcSourceConnectorConfig.CONNECTION_POOL_CONFIG, Boolean.toString(useConnectionPool));
+	  	props.put(JdbcSourceConnectorConfig.CONNECTION_POOL_CONFIG, Boolean.toString(usePerHostConnectionPool));
 	  	
 	  	props.put(JdbcSourceConnectorConfig.TABLE_WHITELIST_CONFIG, tableName);
 	  	
@@ -135,11 +127,14 @@ public class FilemakerDialectConnectIT_FM extends FilemakerDialectITBase {
 		connect.kafka().createTopic(TOPIC_PREFIX + "Bestand");
 		connect.kafka().createTopic(TOPIC_PREFIX + "Objekt");
 
-		//kafkaAdminClient.listTopics().names().get().forEach(n -> logger.debug("TOPIC: " + n));
+		adminClient = connect.kafka().createAdminClient();
+		consumerClient = createConsumerClient();
 	}
 
 	@After
 	public void after() {
+		adminClient.close();
+		consumerClient.close();
 		stopConnect();
 	}
 	
@@ -174,8 +169,8 @@ public class FilemakerDialectConnectIT_FM extends FilemakerDialectITBase {
 		waitForConnectorToStart(CONNECTOR_NAME_2, 1);
 		// waitForConnectorToStart(CONNECTOR_NAME_3, 1);
 		logger.info(">>>>>>>>>>>>>>>>>>>>>> all connectors started");
-		logger.info(".... polling for " + (POLLING_INTERVAL_MS * POLL_MULTIPLIER / 1000) + " s ....");
-		Thread.sleep(POLLING_INTERVAL_MS * POLL_MULTIPLIER);
+		logger.info(".... polling for " + (POLLING_INTERVAL_MS * POLLING_ITERATIONS / 1000) + " s ....");
+		Thread.sleep(POLLING_INTERVAL_MS * POLLING_ITERATIONS);
 		logger.info(">>>>>>>>>>>>>>>>>>>>>> ending test after waiting for 5 poll intervals");
 //
 //    connect.requestPut(connect.endpointForResource(String.format("connectors/%s/pause", CONNECTOR_NAME_1)), "");
@@ -186,6 +181,82 @@ public class FilemakerDialectConnectIT_FM extends FilemakerDialectITBase {
 //    waitForConnectorState(CONNECTOR_NAME_1, 1,
 //        3*POLLING_INTERVAL_MS, State.RUNNING);
 //    
+	}
+	
+	/**
+	 * Test without <code>POLL_SLEEP_MS_CONFIG</code>
+	 */
+	@Test
+	public void test_polling_no_pause() throws Exception {
+	
+		long recordsInDB = 248;
+		// receive at least twice the time records as are in the source table
+		int pollingIterations = Double.valueOf(Math.ceil(recordsInDB / Double.valueOf(BATCH_MAX_ROWS))).intValue() * 2;
+		long totalPollingTime = POLLING_INTERVAL_MS * pollingIterations;
+		
+		String topicName = TOPIC_PREFIX + "Bestand";
+
+		connect.resetConnectorTopics(CONNECTOR_NAME_2);
+		assertEquals("Topic should be empty after reset",  0, countMessages(topicName));
+		
+		Map<String, String> connectorConf = jdbcFMSourceConfiguration("Bestand", false);
+		connect.configureConnector(CONNECTOR_NAME_2, connectorConf);
+		waitForConnectorToStart(CONNECTOR_NAME_2, 1);
+		logger.info(">>>>>>>>>>>>>>>>>>>>>> all connectors started");
+		logger.info(".... polling for " + (totalPollingTime / 1000) + " s ....");
+		Thread.sleep(totalPollingTime);
+		logger.info(">>>>>>>>>>>>>>>>>>>>>> ending test after waiting for " + pollingIterations + " poll intervals");
+		connect.pauseConnector(CONNECTOR_NAME_2);
+		
+		long numberOfMessages = countMessages(topicName);
+		
+		logger.debug("number of messages in {} : {} ", topicName, numberOfMessages);
+		assertTrue("Expecting more messages than records in the table", numberOfMessages > recordsInDB);
+	}
+	
+	/**
+	 * Test with <code>POLL_SLEEP_MS_CONFIG</code>
+	 */
+	@Test
+	public void test_polling_with_pause() throws Exception {
+	
+		long recordsInDB = 248;
+		// receive at least twice the time records as are in the source table
+		int pollingIterations = Double.valueOf(Math.ceil(recordsInDB / Double.valueOf(BATCH_MAX_ROWS))).intValue() * 2;
+		long totalPollingTime = POLLING_INTERVAL_MS * pollingIterations;
+		
+		String topicName = TOPIC_PREFIX + "Bestand";
+
+		connect.resetConnectorTopics(CONNECTOR_NAME_2);
+		assertEquals("Topic should be empty after reset",  0, countMessages(topicName));
+		
+		Map<String, String> connectorConf = jdbcFMSourceConfiguration("Bestand", false);
+		// pause after polling for total polling time
+		connectorConf.put(JdbcSourceConnectorConfig.POLL_SLEEP_MS_CONFIG, Long.toString(totalPollingTime));
+		connect.configureConnector(CONNECTOR_NAME_2, connectorConf);
+		
+		
+		waitForConnectorToStart(CONNECTOR_NAME_2, 1);
+		logger.info(">>>>>>>>>>>>>>>>>>>>>> all connectors started");
+		logger.info(".... polling for " + (totalPollingTime / 1000) + " s ....");
+		Thread.sleep(totalPollingTime);
+		logger.info(">>>>>>>>>>>>>>>>>>>>>> ending test after waiting for " + pollingIterations + " poll intervals");
+		connect.pauseConnector(CONNECTOR_NAME_2);
+		
+		long numberOfMessages = countMessages(topicName);
+		
+		logger.debug("number of messages in {} : {} ", topicName, numberOfMessages);
+		assertEquals("Expecting same number of messages as records in the table", numberOfMessages, recordsInDB);
+	}
+
+	protected long countMessages(String topicName) {
+		List<TopicPartition> partitions = consumerClient.partitionsFor(topicName).stream().map(p -> new TopicPartition(topicName, p.partition()))
+			    .collect(Collectors.toList());
+		consumerClient.assign(partitions);
+		consumerClient.seekToEnd(Collections.emptySet());
+		Map<TopicPartition, Long> endPartitions = partitions.stream().collect(Collectors.toMap(Function.identity(), consumerClient::position));
+		long numberOfMessages = partitions.stream().mapToLong(p -> endPartitions.get(p)).sum();
+		return numberOfMessages;
 	}
   
 	@Test
@@ -199,9 +270,11 @@ public class FilemakerDialectConnectIT_FM extends FilemakerDialectITBase {
 		waitForConnectorToStart(CONNECTOR_NAME_2, 1);
 		// waitForConnectorToStart(CONNECTOR_NAME_3, 1);
 		logger.info(">>>>>>>>>>>>>>>>>>>>>> all connectors started");
-		logger.info(".... polling for " + (POLLING_INTERVAL_MS * POLL_MULTIPLIER / 1000) + " s ....");
-		Thread.sleep(POLLING_INTERVAL_MS * POLL_MULTIPLIER);
-		logger.info(">>>>>>>>>>>>>>>>>>>>>> ending test after waiting for 5 poll intervals");
+		logger.info(".... polling for " + (POLLING_INTERVAL_MS * POLLING_ITERATIONS / 1000) + " s ....");
+		Thread.sleep(POLLING_INTERVAL_MS * POLLING_ITERATIONS);
+		logger.info(">>>>>>>>>>>>>>>>>>>>>> ending test after waiting for " + POLLING_ITERATIONS + " poll intervals");
+		
+		
 //
 //    connect.requestPut(connect.endpointForResource(String.format("connectors/%s/pause", CONNECTOR_NAME_1)), "");
 //
