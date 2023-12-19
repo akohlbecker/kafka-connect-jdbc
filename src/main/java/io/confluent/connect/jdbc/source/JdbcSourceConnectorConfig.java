@@ -124,7 +124,6 @@ public class JdbcSourceConnectorConfig extends AbstractConfig {
   public static final int POLL_SLEEP_MS_DEFAULT = 0;
   private static final String POLL_SLEEP_MS_DISPLAY = "Sleep between table queries (ms)";
 
-
   public static final String NUMERIC_PRECISION_MAPPING_CONFIG = "numeric.precision.mapping";
   private static final String NUMERIC_PRECISION_MAPPING_DOC =
       "Whether or not to attempt mapping NUMERIC values by precision to integral types. This "
