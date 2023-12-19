@@ -403,7 +403,7 @@ public class JdbcSourceTask extends SourceTask {
         final long now = time.milliseconds();
         final long sleepMs = Math.min(nextUpdate - now, 100);
 
-        if (tableQuerierSleepMs(querier) > 0) {
+       if (tableQuerierSleepMs(querier) > 0) {
         	pollSleepMs = tableQuerierSleepMs(querier);
             log.debug("TableQuerier is requested to sleep {} ms before sending next query {}",
           		  pollSleepMs, querier.toString());
@@ -439,6 +439,7 @@ public class JdbcSourceTask extends SourceTask {
           tableQuerierSleepTimes.put(querier, pollSleepMs);
           log.debug("Processing current query to be finished. Registering sleep of {} ms before sending next query {}",
           		  pollSleepMs, querier.toString());
+              pollSleepMs, querier.toString());
         }
 
         if (results.isEmpty()) {
