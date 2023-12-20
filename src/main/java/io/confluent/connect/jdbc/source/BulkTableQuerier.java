@@ -86,10 +86,12 @@ public class BulkTableQuerier extends TableQuerier {
       try {
         setter.setField(record, resultSet);
       } catch (IOException e) {
-        log.warn("Error mapping fields into Connect record", e);
+        log.warn("Error mapping result value as " + setter.field() 
+            + " into Connect record: " + record.toString(), e);
         throw new ConnectException(e);
       } catch (SQLException e) {
-        log.warn("SQL error mapping fields into Connect record", e);
+        log.warn("SQL error mapping result value as " + setter.field() 
+            + " into Connect record: " + record.toString(), e);
         throw new DataException(e);
       }
     }
