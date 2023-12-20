@@ -40,7 +40,6 @@ import org.apache.kafka.connect.data.Struct;
 import org.apache.kafka.connect.errors.ConnectException;
 import org.apache.kafka.connect.source.SourceRecord;
 import org.junit.After;
-import org.junit.Ignore;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.powermock.api.easymock.PowerMock;
@@ -98,7 +97,6 @@ public class JdbcSourceTaskUpdateTest extends JdbcSourceTaskTestBase {
   }
   
   @Test
-  @Ignore
   public void testBulkPeriodicLoadWithPollSleep() throws Exception {
     
     db.createTable(SINGLE_TABLE_NAME, "id", "INT NOT NULL");
@@ -118,17 +116,18 @@ public class JdbcSourceTaskUpdateTest extends JdbcSourceTaskTestBase {
     twoRecords.put(1, 1);
     twoRecords.put(2, 1);
 
-    long start= System.currentTimeMillis();
+    long start= time.milliseconds();
 
     task.start(config);
     List<SourceRecord> records = task.poll();
-    long stopWatchTime = System.currentTimeMillis() - start;    
+    long stopWatchTime = time.milliseconds() - start;    
 	assertTrue("task slept " + stopWatchTime +" ms", stopWatchTime < sleepMs);
     assertEquals(twoRecords, countIntValues(records, "id"));
     assertRecordsTopic(records, TOPIC_PREFIX + SINGLE_TABLE_NAME);
     // polling again should cause the task to sleep for sleepMs
+    System.out.println("polling again should cause the task to sleep for sleepMs");
     records = task.poll();
-    stopWatchTime = System.currentTimeMillis() - start;
+    stopWatchTime = time.milliseconds() - start;
     assertTrue("task slept " + stopWatchTime +" ms", stopWatchTime >= sleepMs);
 
   }
