@@ -11,21 +11,18 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.Properties;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
 import org.apache.kafka.clients.admin.Admin;
-import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
 import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.connect.runtime.AbstractStatus;
 import org.apache.kafka.connect.runtime.AbstractStatus.State;
 import org.apache.kafka.connect.runtime.ConnectorConfig;
 import org.apache.kafka.connect.runtime.rest.entities.ConnectorStateInfo;
-import org.apache.kafka.test.MockDeserializer;
 import org.apache.kafka.test.TestUtils;
 import org.junit.After;
 import org.junit.Before;
@@ -36,7 +33,6 @@ import org.slf4j.LoggerFactory;
 
 import io.confluent.common.utils.IntegrationTest;
 import io.confluent.connect.jdbc.JdbcSourceConnector;
-import io.confluent.connect.jdbc.dialect.ConnectionPoolProvider;
 import io.confluent.connect.jdbc.dialect.FilemakerDialect;
 import io.confluent.connect.jdbc.source.JdbcSourceConnectorConfig;
 import io.confluent.connect.jdbc.source.JdbcSourceTaskConfig;
@@ -104,8 +100,6 @@ public class FilemakerDialectConnectIT_FM extends FilemakerDialectITBase {
 	  	props.put(JdbcSourceTaskConfig.TOPIC_PREFIX_CONFIG, TOPIC_PREFIX);
 	  	props.put(JdbcSourceConnectorConfig.VALIDATE_NON_NULL_CONFIG, "false");
 	  	
-	  	props.put(JdbcSourceConnectorConfig.CONNECTION_POOL_CONFIG, Boolean.toString(usePerHostConnectionPool));
-	  	
 	  	props.put(JdbcSourceConnectorConfig.TABLE_WHITELIST_CONFIG, tableName);
 	  	
 	  	return props;
@@ -136,12 +130,6 @@ public class FilemakerDialectConnectIT_FM extends FilemakerDialectITBase {
 		adminClient.close();
 		consumerClient.close();
 		stopConnect();
-	}
-	
-	private Properties jdbcConnectionPoolProperties() {
-		Properties props =  jdbcConnectionProperties(); 
-		props.put(JdbcSourceConnectorConfig.CONNECTION_POOL_CONFIG, true);
-		return props;
 	}
 	
 	/**
@@ -362,36 +350,5 @@ public class FilemakerDialectConnectIT_FM extends FilemakerDialectITBase {
 		
 		assertTrue(exceptions.isEmpty());
 	}
-	
-	@Test
-	public void testGetPool() throws SQLException {
-		
-		String db1JDBCUrl = composeJdbcUrlWithAuth(jdbcURL_db1, db1_UserAccountQueryParamsString);
-		String db2JDBCUrl =  composeJdbcUrlWithAuth(jdbcURL_db2, db2_UserAccountQueryParamsString);
-		logger.info("db1JDBCUrl:" + db1JDBCUrl);
-		logger.info("db2JDBCUrl:" + db2JDBCUrl);
-		FilemakerDialect dialect_db1_1 = new FilemakerDialect(sourceConfigWithUrl(db1JDBCUrl));
-		FilemakerDialect dialect_db1_2 = new FilemakerDialect(sourceConfigWithUrl(db1JDBCUrl));
-		FilemakerDialect dialect_db2_1 = new FilemakerDialect(sourceConfigWithUrl(db2JDBCUrl));
-
-		ConnectionPoolProvider.singleton().getConnectionPool(jdbcConnectionPoolProperties(), dialect_db1_1);
-		assertEquals(1, ConnectionPoolProvider.singleton().poolCount());
-		
-		ConnectionPoolProvider.singleton().getConnectionPool(jdbcConnectionPoolProperties(), dialect_db1_2);
-		assertEquals(1, ConnectionPoolProvider.singleton().poolCount());
-		
-		ConnectionPoolProvider.singleton().getConnectionPool(jdbcConnectionPoolProperties(), dialect_db2_1);
-		assertEquals(2, ConnectionPoolProvider.singleton().poolCount());
-		
-		ConnectionPoolProvider.singleton().release(dialect_db1_1);
-		assertEquals(2, ConnectionPoolProvider.singleton().poolCount());
-		
-		ConnectionPoolProvider.singleton().release(dialect_db1_2);
-		assertEquals(1, ConnectionPoolProvider.singleton().poolCount());
-		
-		ConnectionPoolProvider.singleton().release(dialect_db2_1);
-		assertEquals(0, ConnectionPoolProvider.singleton().poolCount());
-	}
-
 
 }

@@ -113,11 +113,6 @@ public class GenericDatabaseDialect implements DatabaseDialect {
 
   // The maximum precision that can be achieved in a signed 64-bit integer is 2^63 ~= 9.223372e+18
   private static final int MAX_INTEGER_TYPE_PRECISION = 18;
-  
-  // Timeout is 40 seconds to be as long as possible for customer to have a long connection
-  // handshake, while still giving enough time to validate once in the follower worker,
-  // and again in the leader worker and still be under 90s REST serving timeout
-  protected static final int LOGIN_TIMEOUT = 40;
 
   private static final String PRECISION_FIELD = "connect.decimal.precision";
 
@@ -164,7 +159,6 @@ public class GenericDatabaseDialect implements DatabaseDialect {
   private final int batchMaxRows;
   private final TimeZone timeZone;
   private final JdbcSourceConnectorConfig.TimestampGranularity tsGranularity;
-  private HikariDataSource dataSourcePool;
 
   /**
    * Create a new dialect instance with the given connector configuration.
@@ -243,7 +237,6 @@ public class GenericDatabaseDialect implements DatabaseDialect {
     // These config names are the same for both source and sink configs ...
     String username = config.getString(JdbcSourceConnectorConfig.CONNECTION_USER_CONFIG);
     Password dbPassword = config.getPassword(JdbcSourceConnectorConfig.CONNECTION_PASSWORD_CONFIG);
-    boolean useConnectionPool = config.getBoolean(JdbcSourceConnectorConfig.CONNECTION_POOL_CONFIG);
     Properties properties = new Properties();
     if (username != null) {
       properties.setProperty("user", username);
@@ -252,28 +245,11 @@ public class GenericDatabaseDialect implements DatabaseDialect {
       properties.setProperty("password", dbPassword.value());
     }
     properties = addConnectionProperties(properties);
-
-    final Connection connection;
-    
-    if(!useConnectionPool) {
-	    DriverManager.setLoginTimeout(LOGIN_TIMEOUT);
-	    connection = DriverManager.getConnection(jdbcUrl, properties);
-    } else {
-    	try {
-    		if (dataSourcePool == null || dataSourcePool.isClosed()) {
-    			dataSourcePool = ConnectionPoolProvider.singleton().getConnectionPool(properties, this);
-    		}
-    		connection = dataSourcePool.getConnection();
-    	} catch (RuntimeException e) {
-    		if (e.getClass().getPackage().getName().startsWith("com.zaxxer.hikari")) {
-    			throw new SQLException(e);
-    		}
-    		if (e.getMessage().contains("Failed to get driver instance")) {
-    			throw new SQLException("Hikari didn't find the driver", e);
-    		}
-    		throw e;
-    	}
-    }
+    // Timeout is 40 seconds to be as long as possible for customer to have a long connection
+    // handshake, while still giving enough time to validate once in the follower worker,
+    // and again in the leader worker and still be under 90s REST serving timeout
+    DriverManager.setLoginTimeout(40);
+    Connection connection = DriverManager.getConnection(jdbcUrl, properties);
     if (jdbcDriverInfo == null) {
       jdbcDriverInfo = createJdbcDriverInfo(connection);
     }
@@ -283,20 +259,14 @@ public class GenericDatabaseDialect implements DatabaseDialect {
 
   @Override
   public void close() {
-
-    boolean useConnectionPool = config.getBoolean(JdbcSourceConnectorConfig.CONNECTION_POOL_CONFIG);
-    if(!useConnectionPool) {
-	    Connection conn;
-	    while ((conn = connections.poll()) != null) {
-	      try {
-	        conn.close();
-	      } catch (Throwable e) {
-	        glog.warn("Error while closing connection to {}", jdbcDriverInfo, e);
-	      }
-	    }
-    } else {
-    	ConnectionPoolProvider.singleton().release(this);
-    }
+    Connection conn;
+    while ((conn = connections.poll()) != null) {
+      try {
+        conn.close();
+      } catch (Throwable e) {
+        glog.warn("Error while closing connection to {}", jdbcDriverInfo, e);
+      }
+    }    
   }
 
   @Override
@@ -2014,8 +1984,4 @@ public class GenericDatabaseDialect implements DatabaseDialect {
   public String toString() {
     return name();
   }
-
-	public int getLoginTimeout() {
-		return LOGIN_TIMEOUT;
-	}
 }

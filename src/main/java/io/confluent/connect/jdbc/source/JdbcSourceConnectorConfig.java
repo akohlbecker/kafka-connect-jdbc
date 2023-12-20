@@ -62,11 +62,6 @@ public class JdbcSourceConnectorConfig extends AbstractConfig {
   private static Pattern INVALID_CHARS = Pattern.compile("[^a-zA-Z0-9._-]");
 
   public static final String CONNECTION_PREFIX = "connection.";
-
-  public static final String CONNECTION_POOL_CONFIG = CONNECTION_PREFIX + "pool";
-  public static final String CONNECTION_POOL_DOC = "Use a connection pool per jdbc host. By default this is disabled."
-  		+ "For Filemaker Server connections it is highly recommended to use the connection pool, though!";
-  public static final String CONNECTION_POOL_DISPLAY = "JDBC connection pool";
   
   public static final String CONNECTION_URL_CONFIG = CONNECTION_PREFIX + "url";
   private static final String CONNECTION_URL_DOC =
@@ -448,16 +443,6 @@ public class JdbcSourceConnectorConfig extends AbstractConfig {
         Width.LONG,
         CONNECTION_URL_DISPLAY,
         Arrays.asList(TABLE_WHITELIST_CONFIG, TABLE_BLACKLIST_CONFIG)
-    ).define(
-        CONNECTION_POOL_CONFIG,
-        Type.BOOLEAN,
-        Boolean.FALSE,
-        Importance.HIGH,
-        CONNECTION_POOL_DOC,
-        DATABASE_GROUP,
-        ++orderInGroup,
-        Width.SHORT,
-        CONNECTION_POOL_DISPLAY
     ).define(
         CONNECTION_USER_CONFIG,
         Type.STRING,

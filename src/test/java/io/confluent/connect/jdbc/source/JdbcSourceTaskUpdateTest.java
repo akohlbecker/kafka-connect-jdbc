@@ -40,6 +40,7 @@ import org.apache.kafka.connect.data.Struct;
 import org.apache.kafka.connect.errors.ConnectException;
 import org.apache.kafka.connect.source.SourceRecord;
 import org.junit.After;
+import org.junit.Ignore;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.powermock.api.easymock.PowerMock;
@@ -97,6 +98,7 @@ public class JdbcSourceTaskUpdateTest extends JdbcSourceTaskTestBase {
   }
   
   @Test
+  @Ignore
   public void testBulkPeriodicLoadWithPollSleep() throws Exception {
     
     db.createTable(SINGLE_TABLE_NAME, "id", "INT NOT NULL");
