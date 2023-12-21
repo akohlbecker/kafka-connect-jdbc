@@ -86,13 +86,15 @@ public class BulkTableQuerier extends TableQuerier {
       try {
         setter.setField(record, resultSet);
       } catch (IOException e) {
-        log.warn("Error mapping result value as " + setter.field() 
-            + " into Connect record: " + record.toString(), e);
-        throw new ConnectException(e);
+        String message = "Error mapping result value as " + setter.field() 
+            + " into Connect record: " + record.toString();
+        log.warn(message, e);
+        throw new ConnectException(message, e);
       } catch (SQLException e) {
-        log.warn("SQL error mapping result value as " + setter.field() 
-            + " into Connect record: " + record.toString(), e);
-        throw new DataException(e);
+        String message = "SQL error mapping result value as " + setter.field() 
+            + " into Connect record: " + record.toString();
+        log.warn(message, e);
+        throw new DataException(message, e);
       }
     }
     // TODO: key from primary key? partition?
